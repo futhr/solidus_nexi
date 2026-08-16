@@ -1,82 +1,115 @@
-![DIBS Logo][1]
+# Solidus Nexi
 
-# Spree Payment Gateway for DIBS
+`solidus_nexi` is a Solidus-native integration for the current Nexi Checkout Payment API. It uses Nexi's hosted payment page so card details remain outside Solidus, then synchronizes authorization, capture, cancellation, and refund state through authenticated webhooks and provider retrieval.
 
-[![Dependency Status](https://gemnasium.com/futhr/spree-dibs.png)](https://gemnasium.com/futhr/spree-dibs)
-[![Code Climate](https://codeclimate.com/github/futhr/spree-dibs.png)](https://codeclimate.com/github/futhr/spree-dibs)
+This is the successor to `spree_dibs`, not an API-compatible upgrade of its historical ActiveMerchant gateway. The legacy code is preserved by the `v2.1.0` repository tag.
 
-[DIBS Payment Services][2], the largest provider of Internet payment solutions in Northern Europe.
+## Supported versions and scope
+
+- Solidus 4.7 (primary) and 4.6 (secondary)
+- Ruby 3.2 or newer
+- one-time hosted Checkout payments
+- authorization/reservation and optional immediate capture
+- full capture, full cancellation, and full refund
+- authenticated, deduplicated webhook processing
+- durable mutation records and reconciliation after an ambiguous response
+
+Partial capture and partial refund are deliberately rejected. Nexi requires exact order-item allocation for partial operations, and Solidus's amount-only gateway calls do not prove that allocation.
 
 ## Installation
 
-Add spree_dibs and this branch of active merchant to your `Gemfile`
+Add the renamed gem to the application:
 
 ```ruby
-gem 'spree_dibs', github: 'futhr/spree-dibs', branch: 'master'
-gem 'activemerchant', github: 'futhr/active_merchant', branch: 'dibspayment'
+gem "solidus_nexi", github: "futhr/solidus-nexi"
 ```
 
-**NOTE** _This cannot be used with official `active_merchant` gem due to that the DIBS gateway was never merged. This because DIBS do not have a sandbox to run CI tests against.
+Then install and migrate:
 
-### Heroku SSL gotcha
+```sh
+bundle install
+bin/rails generate solidus_nexi:install
+bin/rails db:migrate
+```
 
-To make this work if you deploy on Heroku you need to add this to your Rails app in `config/initialzers/dibs.rb`.
-You also need to include this code snippet to make your tests pass.
+Set a 32-byte `SOLIDUS_PREFERENCES_MASTER_KEY` using the same secret-management system as the application. Nexi credentials are encrypted Solidus preferences backed by this key.
+
+Configure these environment values before creating the payment method:
+
+```sh
+NEXI_CHECKOUT_API_KEY=replace-with-test-or-live-key
+NEXI_CHECKOUT_WEBHOOK_SECRET=RandomAlphanumericSecret123
+NEXI_CHECKOUT_ENVIRONMENT=test
+NEXI_CHECKOUT_COUNTRY=SWE
+NEXI_CHECKOUT_TERMS_URL=https://shop.example/terms
+NEXI_CHECKOUT_MERCHANT_TERMS_URL=https://shop.example/privacy
+NEXI_CHECKOUT_PUBLIC_BASE_URL=https://shop.example
+```
+
+The public base URL must be the HTTPS origin at which the mounted engine is reachable. The webhook is created per Nexi payment and uses an opaque, 8–64 character alphanumeric Authorization value.
+
+To rotate webhook Authorization safely, move the old value to `NEXI_CHECKOUT_PREVIOUS_WEBHOOK_SECRET` and put the new value in `NEXI_CHECKOUT_WEBHOOK_SECRET`. New payments register the new value while callbacks from existing payments accept either value. Keep the previous value through the operational/refund lifetime of payments that registered it, then remove it; only one previous generation is accepted.
+
+Create `SolidusNexi::PaymentMethod` in the Solidus admin, select the `nexi_checkout_env_credentials` preference source, associate it with the relevant stores, and choose whether `auto_capture` should ask Nexi Checkout to charge immediately after reservation. API keys and webhook secrets are intentionally not rendered back through the generic admin preference form.
+
+## Starting hosted Checkout
+
+The install generator mounts the engine at `/solidus_nexi`. A storefront can start or reuse a Checkout session with:
+
+```http
+POST /solidus_nexi/checkout_sessions
+Content-Type: application/json
+
+{
+  "order_number": "R123456789",
+  "guest_token": "the-order-guest-token",
+  "payment_method_id": 4
+}
+```
+
+JSON requests receive the Nexi `checkout_url`; browser form requests are redirected there. The guest token is always required, including for signed-in checkout, so an order number alone cannot initiate payment.
+
+The browser return endpoint only schedules reconciliation and redirects using `config.return_path_resolver`. It never treats a customer redirect as proof of payment.
 
 ```ruby
-require 'net/http'
-
-Net::HTTP.class_eval do
-  def do_start
-    # Start Hack
-    @ssl_version = :SSLv3 if @address =~ /.*\.dibspayment\.com/
-    # PREPARE', End Hack
-    connect
-    @started = true
-  end
+SolidusNexi.configure do |config|
+  config.public_base_url = ENV.fetch("NEXI_CHECKOUT_PUBLIC_BASE_URL")
+  config.return_path_resolver = ->(source) { "/orders/#{source.payments.last.order.number}" }
+  config.cancel_path_resolver = ->(_source) { "/checkout/payment" }
 end
 ```
 
----
+## Reliability model
 
-## Contributing
+Before any create, capture, cancellation, or refund request, the extension persists a unique logical operation. Capture and refund reuse the same persisted Nexi idempotency key on retry. Current Nexi references do not advertise idempotency for payment creation or cancellation, so those operations are never blindly replayed after an uncertain result.
 
-In the spirit of [free software][3], **everyone** is encouraged to help improve this project.
+Webhook event IDs are stored under a database unique constraint. The receiver verifies Authorization before mutation, persists only safe envelope metadata, enqueues reconciliation, and returns HTTP 200 exactly. Reconciliation retrieves the payment by Nexi `paymentId`; duplicate and out-of-order notifications therefore cannot regress a terminal Solidus payment.
 
-Here are some ways *you* can contribute:
+Operational state is available in:
 
-* by using prerelease versions
-* by reporting [bugs][4]
-* by suggesting new features
-* by writing or editing documentation
-* by writing specifications
-* by writing code (*no patch is too small*: fix typos, add comments, clean up inconsistent whitespace)
-* by refactoring code
-* by resolving [issues][4]
-* by reviewing patches
+- `solidus_nexi_payment_sources` for provider IDs and authoritative cumulative amounts;
+- `solidus_nexi_operations` for logical requests, idempotency keys, and unknown outcomes;
+- `solidus_nexi_webhook_receipts` for event deduplication and processing status.
 
-Issue/feature related questions can be asked thru [Gitter chat](https://gitter.im/futhr/spree-dibs).
+Run `bin/rails 'solidus_nexi:reconcile[42]'` for one source, or `bin/rails solidus_nexi:reconcile` to enqueue all stale/unknown operations that have a known Nexi payment ID.
 
-Starting point:
+Do not log or persist full Nexi payloads: retrieval responses may include consumer or masked-card data that this extension does not need.
 
-Be sure to bundle your dependencies and then create a dummy test app for the specs to run against. Make sure to create `spec/support/config.yml` from the sample file and modify the `merchantid` and `hmackey` variables from your DIBS account information.
+## Migrating from `spree_dibs`
 
-* Fork the repo
-* Clone your repo
-* Run `bundle install`
-* Add config for *your* DIBS account
-* Run `bundle exec rake test_app` to create the test application in `spec/test_app`
-* Make your changes
-* Ensure specs pass by running `bundle exec rspec spec`
-* Submit your pull request
+See [docs/migration.md](docs/migration.md). Old DIBS login/password settings and card sources are not migrated or assumed to be valid Nexi Checkout credentials.
 
-Copyright (c) 2014 [Tobias Bohwalli][5], [FreeRunning Technologies][6] and [contributors][7], released under the [New BSD License][8]
+## Development
 
-[1]: https://raw.github.com/futhr/spree-dibs/master/dibs.png
-[2]: http://www.dibspayment.com
-[3]: http://www.fsf.org/licensing/essays/free-sw.html
-[4]: https://github.com/futhr/spree-dibs/issues
-[5]: https://github.com/futhr
-[6]: https://github.com/freerunningtechnologies
-[7]: https://github.com/futhr/spree-dibs/contributors
-[8]: https://github.com/futhr/spree-dibs/tree/master/LICENSE.md
+```sh
+bin/setup
+bin/rake extension:test_app
+bin/rake
+bundle exec rubocop
+```
+
+Use `SOLIDUS_BRANCH=v4.6` and an appropriate `RAILS_VERSION` to exercise the secondary compatibility target. Provider fixtures are sanitized and live under `spec/fixtures/nexi`. A real sandbox smoke test additionally requires merchant-specific Nexi test credentials and cannot be replaced by fixture tests.
+
+## License
+
+Copyright © 2014–2026 Tobias Bohwalli, FreeRunning Technologies, and contributors. Released under the [BSD 3-Clause License](LICENSE.md).
