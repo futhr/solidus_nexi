@@ -3,7 +3,18 @@
 ENV["RAILS_ENV"] = "test"
 ENV["SOLIDUS_PREFERENCES_MASTER_KEY"] ||= "0123456789abcdef0123456789abcdef"
 
-require "solidus_dev_support/rspec/coverage"
+require "simplecov"
+if ENV["CI"]
+  require "simplecov-lcov"
+  SimpleCov::Formatter::LcovFormatter.config.report_with_single_file = true
+  SimpleCov::Formatter::LcovFormatter.config.lcov_file_name = "lcov.info"
+  SimpleCov.formatter = SimpleCov::Formatter::LcovFormatter
+end
+SimpleCov.start("rails") do
+  add_filter %r{^/lib/generators/.*/install/install_generator.rb}
+  add_filter %r{^/lib/.*/factories.rb}
+  add_filter %r{^/lib/.*/version.rb}
+end
 
 dummy_environment = "#{__dir__}/dummy/config/environment.rb"
 system("bin/rake", "extension:test_app") unless File.exist?(dummy_environment)

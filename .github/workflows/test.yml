@@ -2,8 +2,10 @@ name: Test
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
+    branches: [main]
+  workflow_dispatch:
   schedule:
     - cron: "0 4 * * 4"
 
@@ -11,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: test-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -33,30 +35,86 @@ jobs:
       RAILS_VERSION: ${{ matrix.rails }}
       SOLIDUS_PREFERENCES_MASTER_KEY: 0123456789abcdef0123456789abcdef
     steps:
-      - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
-      - run: bundle exec rake extension:test_app
-      - run: bundle exec rake
+      - name: Verify dependency matrix
+        run: |
+          bundle exec ruby -rrails -e '
+            expected = ENV.fetch("RAILS_VERSION")
+            actual = Gem::Version.new(Rails::VERSION::STRING).segments.first(2).join(".")
+            abort "Expected Rails #{expected}, resolved #{Rails::VERSION::STRING}" unless actual == expected
+          '
+      - name: Build test application
+        run: bundle exec rake extension:test_app
+      - name: Check eager loading
+        run: (cd spec/dummy && bin/rails zeitwerk:check)
+      - name: Run test suite
+        run: bundle exec rake
+      - name: Upload coverage to Codecov
+        if: matrix.solidus == 'v4.7' && matrix.rails == '7.2' && matrix.ruby == '3.4'
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov/lcov.info
+          fail_ci_if_error: true
 
   lint:
+    name: Ruby style
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
         with:
           ruby-version: "3.2"
           bundler-cache: true
-      - run: bundle exec rubocop
+      - name: Run RuboCop
+        run: bundle exec rubocop
 
   package:
+    name: RubyGems package
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
         with:
           ruby-version: "3.2"
           bundler-cache: true
-      - run: gem build solidus_nexi.gemspec
+      - name: Build gem
+        run: gem build solidus_nexi.gemspec
+      - name: Inspect gem contents
+        run: |
+          ruby -rrubygems/package <<'RUBY'
+          artifacts = Dir["solidus_nexi-*.gem"]
+          abort "Expected one gem artifact, found #{artifacts.length}" unless artifacts.one?
+
+          files = Gem::Package.new(artifacts.first).spec.files
+          required = %w[
+            lib/solidus_nexi.rb
+            config/routes.rb
+            db/migrate/20260816090000_create_solidus_nexi_payment_sources.rb
+            db/migrate/20260816090100_create_solidus_nexi_operations.rb
+            db/migrate/20260816090200_create_solidus_nexi_webhook_receipts.rb
+            README.md
+            CHANGELOG.md
+            SECURITY.md
+            docs/migration.md
+            docs/operations.md
+            docs/releasing.md
+          ]
+          missing = required - files
+          abort "Missing packaged files: #{missing.join(', ')}" unless missing.empty?
+
+          forbidden = files.select do |path|
+            path.start_with?("spec/") || path.include?("spree_dibs") || path.include?("gateway/dibs")
+          end
+          abort "Legacy or test files packaged: #{forbidden.join(', ')}" unless forbidden.empty?
+          RUBY
