@@ -20,7 +20,7 @@ This is the first tagged source prerelease under the renamed `solidus_nexi` gem 
 
 ### Changed
 
-- Renamed the repository identity to `solidus-nexi`, the gem to `solidus_nexi`, and the Ruby namespace to `SolidusNexi`.
+- Renamed the repository and gem identity to `solidus_nexi`, and the Ruby namespace to `SolidusNexi`.
 - Replaced process-global ActiveMerchant behavior with per-payment-method Nexi test/live clients.
 - Moved card-data collection entirely to Nexi's hosted checkout.
 

@@ -5,12 +5,12 @@ require_relative "lib/solidus_nexi/version"
 Gem::Specification.new do |spec|
   spec.name = "solidus_nexi"
   spec.version = SolidusNexi::VERSION
-  spec.authors = ["Tobias Bohwalli", "FreeRunning Technologies"]
+  spec.authors = ["Tobias Bohwalli"]
   spec.email = ["hi@futhr.io"]
 
   spec.summary = "Nexi Checkout payment integration for Solidus"
   spec.description = "A Solidus-native Nexi Checkout adapter with durable idempotency, authenticated webhooks, and payment reconciliation."
-  spec.homepage = "https://github.com/futhr/solidus-nexi"
+  spec.homepage = "https://github.com/futhr/solidus_nexi"
   spec.license = "BSD-3-Clause"
 
   spec.metadata["homepage_uri"] = spec.homepage

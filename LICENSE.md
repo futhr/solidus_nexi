@@ -1,4 +1,5 @@
 Copyright (c) 2014 Tobias Bohwalli, FreeRunning Technologies and other contributors.
+Copyright (c) 2026 Tobias Bohwalli and solidus_nexi contributors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,

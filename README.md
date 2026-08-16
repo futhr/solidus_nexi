@@ -1,5 +1,12 @@
 # Solidus Nexi
 
+[![Test](https://github.com/futhr/solidus_nexi/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/futhr/solidus_nexi/actions/workflows/test.yml)
+[![Codecov](https://codecov.io/gh/futhr/solidus_nexi/branch/main/graph/badge.svg)](https://codecov.io/gh/futhr/solidus_nexi)
+[![Release](https://img.shields.io/badge/release-0.1.0.alpha.1-orange)](CHANGELOG.md)
+[![Ruby](https://img.shields.io/badge/Ruby-3.2%2B-CC342D?logo=ruby&logoColor=white)](https://www.ruby-lang.org/)
+[![Solidus](https://img.shields.io/badge/Solidus-4.6%E2%80%934.7-2B59C3)](https://solidus.io/)
+[![License](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](LICENSE.md)
+
 `solidus_nexi` connects Solidus to the current Nexi Checkout Payment API. The customer enters payment details on Nexi's hosted checkout page; Solidus stores only the identifiers and financial state it needs to operate the payment.
 
 This project succeeds the historical `spree_dibs` extension. It is a complete rewrite under the `SolidusNexi` namespace and is not API-compatible with `Spree::Gateway::Dibs`. The final legacy source is preserved by the `v2.1.0` repository tag.
@@ -42,7 +49,7 @@ gem "solidus_nexi", "0.1.0.alpha.1"
 Until then, development installations can use the renamed GitHub repository:
 
 ```ruby
-gem "solidus_nexi", github: "futhr/solidus-nexi"
+gem "solidus_nexi", github: "futhr/solidus_nexi"
 ```
 
 Install the bundle, mount the engine, copy its migrations, and migrate:
@@ -159,4 +166,4 @@ Provider examples are sanitized under `spec/fixtures/nexi`. They make local test
 
 ## License
 
-Copyright © 2014–2026 Tobias Bohwalli, FreeRunning Technologies, and contributors. Released under the [BSD 3-Clause License](LICENSE.md).
+Copyright © 2014–2026 Tobias Bohwalli and contributors. The legacy project's original copyright attribution is preserved in the [BSD 3-Clause License](LICENSE.md).

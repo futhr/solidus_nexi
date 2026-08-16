@@ -7,7 +7,7 @@ This is a maintainer runbook. Publishing changes external state, so every step t
 ## Before the first release
 
 1. Confirm that `solidus_nexi` is available or controlled by the maintainers on RubyGems.
-2. Confirm that the GitHub repository has been renamed to `futhr/solidus-nexi` and that gemspec metadata resolves there.
+2. Confirm that the GitHub repository has been renamed to `futhr/solidus_nexi` and that gemspec metadata resolves there.
 3. Require MFA on the RubyGems account and keep `rubygems_mfa_required = true` in the gemspec metadata.
 4. Complete the real Nexi merchant test lifecycle described in [Operations](operations.md).
 5. Decide whether the first publication remains `0.1.0.alpha.1` or advances to another prerelease version.
@@ -53,6 +53,7 @@ Keep release history linear and reviewable:
 4. Push the commit and tag, then verify the tag resolves to the reviewed release commit.
 5. Publish the exact gem artifact that was inspected; do not rebuild from a different tree.
 6. Verify the RubyGems page, checksums, metadata links, and installation in a clean application.
+7. Replace the README's source-prerelease badge with the live RubyGems version badge.
 
 An annotated alpha tag may preserve a reviewed source snapshot before merchant validation is complete. That tag does not authorize RubyGems publication: the provider test gate and every first-release check above must still pass before `gem push`.
 
