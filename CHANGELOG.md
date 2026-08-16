@@ -23,6 +23,8 @@ This is the first tagged source prerelease under the renamed `solidus_nexi` gem 
 - Renamed the repository and gem identity to `solidus_nexi`, and the Ruby namespace to `SolidusNexi`.
 - Replaced process-global ActiveMerchant behavior with per-payment-method Nexi test/live clients.
 - Moved card-data collection entirely to Nexi's hosted checkout.
+- Hardened release CI with exact Rails-series checks, eager-load and package inspection, immutable action pins, and Codecov LCOV uploads.
+- Aligned repository metadata and badges with the renamed GitHub remote while preserving legacy copyright attribution separately.
 
 ### Removed
 
@@ -44,6 +46,9 @@ This is the first tagged source prerelease under the renamed `solidus_nexi` gem 
 - `ae7de46` — `ci`: test supported Solidus and Ruby versions.
 - `e2724f0` — `docs`: document Nexi cutover and operations.
 - `c460fcf` — `docs`: align guides for the RubyGems release.
+- `cfe9ec3` — `docs`: finalize prerelease history and release policy.
+- `e936880` — `ci`: align checks with supported release matrix.
+- `8ceec4c` — `chore`: align project identity and badges.
 
 ## 2.1.0 — 2014-03-01
 
