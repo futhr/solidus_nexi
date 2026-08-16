@@ -9,7 +9,7 @@ This is a maintainer runbook. Publishing changes external state, so every step t
 1. Confirm that `solidus_nexi` is available or controlled by the maintainers on RubyGems.
 2. Confirm that the GitHub repository has been renamed to `futhr/solidus_nexi` and that gemspec metadata resolves there.
 3. Require MFA on the RubyGems account and keep `rubygems_mfa_required = true` in the gemspec metadata.
-4. Activate `futhr/solidus_nexi` in Codecov, store its upload token as the `CODECOV_TOKEN` GitHub Actions secret, and verify the report from `main`.
+4. Activate `futhr/solidus_nexi` in Codecov and verify the OIDC-authenticated coverage report from `main`.
 5. Complete the real Nexi merchant test lifecycle described in [Operations](operations.md).
 6. Decide whether the first publication remains `0.1.0.alpha.1` or advances to another prerelease version.
 
