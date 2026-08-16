@@ -1,0 +1,7 @@
+{
+  "id": "09772adb6db74c70a6c4b982190aad44",
+  "event": "payment.checkout.completed",
+  "timestamp": "2026-08-16T08:01:02Z",
+  "merchantId": 100242833,
+  "data": {"paymentId": "06afca06db214766b3a230c991e14a5d", "order": {"reference": "R123456789"}}
+}

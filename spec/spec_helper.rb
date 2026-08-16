@@ -1,42 +1,28 @@
-require 'simplecov'
-SimpleCov.start do
-  add_filter '/spec/'
-  add_filter '/config/'
-  add_group 'Models', 'app/models'
-  add_group 'Libraries', 'lib'
-end
+# frozen_string_literal: true
 
-ENV['RAILS_ENV'] = 'test'
+ENV["RAILS_ENV"] = "test"
+ENV["SOLIDUS_PREFERENCES_MASTER_KEY"] ||= "0123456789abcdef0123456789abcdef"
 
-require File.expand_path('../dummy/config/environment.rb',  __FILE__)
+require "solidus_dev_support/rspec/coverage"
 
-require 'rspec/rails'
-require 'database_cleaner'
-require 'ffaker'
+dummy_environment = "#{__dir__}/dummy/config/environment.rb"
+system("bin/rake", "extension:test_app") unless File.exist?(dummy_environment)
+require dummy_environment
 
-Dir[File.join(File.dirname(__FILE__), 'support/**/*.rb')].each { |f| require f }
+require "solidus_dev_support/rspec/feature_helper"
+require "webmock/rspec"
 
-require 'spree/testing_support/factories'
-require 'spree/testing_support/url_helpers'
+Dir["#{__dir__}/support/**/*.rb"].sort.each { |file| require file }
+
+SolidusDevSupport::TestingSupport::Factories.load_for(SolidusNexi::Engine)
 
 RSpec.configure do |config|
-  config.include FactoryGirl::Syntax::Methods
-  config.include Spree::TestingSupport::UrlHelpers
-
-  config.mock_with :rspec
-  config.use_transactional_fixtures = false
-
-  config.before :suite do
-    DatabaseCleaner.strategy = :transaction
-    DatabaseCleaner.clean_with :truncation
-  end
+  config.infer_spec_type_from_file_location!
+  config.use_transactional_fixtures = true
+  config.include ActiveJob::TestHelper
 
   config.before do
-    DatabaseCleaner.strategy = example.metadata[:js] ? :truncation : :transaction
-    DatabaseCleaner.start
-  end
-
-  config.after do
-    DatabaseCleaner.clean
+    ActiveJob::Base.queue_adapter = :test
+    SolidusNexi.reset_configuration!
   end
 end

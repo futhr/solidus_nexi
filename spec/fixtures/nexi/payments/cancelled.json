@@ -1,0 +1,9 @@
+{
+  "payment": {
+    "paymentId": "06afca06db214766b3a230c991e14a5d",
+    "summary": {"reservedAmount": 10000, "chargedAmount": 0, "refundedAmount": 0, "cancelledAmount": 10000},
+    "orderDetails": {"amount": 10000, "currency": "SEK", "reference": "R123456789"},
+    "charges": [],
+    "refunds": []
+  }
+}

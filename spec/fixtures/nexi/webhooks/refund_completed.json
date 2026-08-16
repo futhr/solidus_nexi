@@ -1,0 +1,7 @@
+{
+  "id": "47fa22b204014099b07290e34b51282a",
+  "event": "payment.refund.completed",
+  "timestamp": "2026-08-16T08:03:00Z",
+  "merchantId": 100242833,
+  "data": {"paymentId": "06afca06db214766b3a230c991e14a5d", "refundId": "60e208b88b94403bb9ced1cca661db99", "order": {"reference": "R123456789"}}
+}
