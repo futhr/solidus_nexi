@@ -1,0 +1,12 @@
+<p><%= t("solidus_nexi.hosted_checkout_explanation") %></p>
+
+<%= hidden_field_tag :order_number, @order.number %>
+<%= hidden_field_tag :guest_token, @order.guest_token %>
+<button
+  type="submit"
+  name="payment_method_id"
+  value="<%= payment_method.id %>"
+  formaction="<%= solidus_nexi.checkout_sessions_path %>"
+  formmethod="post">
+  <%= t("solidus_nexi.continue_to_nexi") %>
+</button>

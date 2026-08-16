@@ -1,0 +1,7 @@
+json.provider_payment_id payment_source.provider_payment_id
+json.provider_status payment_source.provider_status
+json.provider_charge_id payment_source.provider_charge_id
+json.reserved_amount_minor payment_source.reserved_amount_minor
+json.charged_amount_minor payment_source.charged_amount_minor
+json.refunded_amount_minor payment_source.refunded_amount_minor
+json.cancelled_amount_minor payment_source.cancelled_amount_minor

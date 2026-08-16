@@ -1,0 +1,15 @@
+en:
+  activerecord:
+    models:
+      solidus_nexi/payment_method: Nexi Checkout
+  solidus_nexi:
+    hosted_checkout_explanation: You will continue to Nexi's secure hosted checkout to enter payment details.
+    continue_to_nexi: Continue to Nexi Checkout
+    non_reusable_source: Nexi Checkout payment details cannot be reused.
+    admin_hosted_checkout_only: Nexi Checkout payments must be initiated by the customer through hosted checkout.
+    provider_payment_id: Nexi payment ID
+    provider_charge_id: Nexi charge ID
+    provider_status: Nexi status
+    last_reconciled_at: Last reconciled at
+    checkout_pending: Your payment is being confirmed with Nexi.
+    reconciliation_required: Nexi received the request, but its outcome is not known yet. Reconciliation is required before retrying.

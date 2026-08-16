@@ -1,0 +1,16 @@
+<% source = payment.source %>
+<dl>
+  <dt><%= t("solidus_nexi.provider_payment_id") %></dt>
+  <dd><%= source.provider_payment_id.presence || "—" %></dd>
+  <dt><%= t("solidus_nexi.provider_status") %></dt>
+  <dd><%= source.provider_status.presence || "—" %></dd>
+  <dt><%= t("solidus_nexi.provider_charge_id") %></dt>
+  <dd><%= source.provider_charge_id.presence || "—" %></dd>
+  <dt><%= t("solidus_nexi.last_reconciled_at") %></dt>
+  <dd><%= source.last_reconciled_at || "—" %></dd>
+</dl>
+
+<% unknown_operations = SolidusNexi::Operation.where(payment: payment, reconciliation_required: true) %>
+<% if unknown_operations.exists? %>
+  <p><%= t("solidus_nexi.reconciliation_required") %></p>
+<% end %>
