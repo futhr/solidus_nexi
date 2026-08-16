@@ -1,60 +1,90 @@
 # Solidus Nexi
 
-`solidus_nexi` is a Solidus-native integration for the current Nexi Checkout Payment API. It uses Nexi's hosted payment page so card details remain outside Solidus, then synchronizes authorization, capture, cancellation, and refund state through authenticated webhooks and provider retrieval.
+`solidus_nexi` connects Solidus to the current Nexi Checkout Payment API. The customer enters payment details on Nexi's hosted checkout page; Solidus stores only the identifiers and financial state it needs to operate the payment.
 
-This is the successor to `spree_dibs`, not an API-compatible upgrade of its historical ActiveMerchant gateway. The legacy code is preserved by the `v2.1.0` repository tag.
+This project succeeds the historical `spree_dibs` extension. It is a complete rewrite under the `SolidusNexi` namespace and is not API-compatible with `Spree::Gateway::Dibs`. The final legacy source is preserved by the `v2.1.0` repository tag.
 
-## Supported versions and scope
+The gem is currently an alpha prerelease. Complete a merchant-specific Nexi test-environment run before enabling it in production.
 
-- Solidus 4.7 (primary) and 4.6 (secondary)
-- Ruby 3.2 or newer
-- one-time hosted Checkout payments
-- authorization/reservation and optional immediate capture
-- full capture, full cancellation, and full refund
-- authenticated, deduplicated webhook processing
-- durable mutation records and reconciliation after an ambiguous response
+## Compatibility and scope
 
-Partial capture and partial refund are deliberately rejected. Nexi requires exact order-item allocation for partial operations, and Solidus's amount-only gateway calls do not prove that allocation.
+The primary target is Solidus 4.7. Solidus 4.6 remains a secondary target while it can be supported without compromising the integration. Ruby 3.2 and newer are supported; CI covers Ruby 3.2 through 4.0 on the primary target.
+
+The initial release supports:
+
+- one-time payments through `HostedPaymentPage`;
+- reservation/authorization with optional immediate capture;
+- full capture of an authorized payment;
+- full cancellation before capture;
+- full refund of a captured payment;
+- authenticated webhook synchronization;
+- manual and background reconciliation from Nexi's payment resource; and
+- CHF, CZK, DKK, EUR, GBP, NOK, PLN, SEK, and USD.
+
+It does not support subscriptions, stored payment profiles, embedded checkout, partial capture, partial cancellation, or partial refund. Partial financial operations need an exact order-item allocation that Solidus's amount-only gateway calls cannot prove, so the adapter rejects them before contacting Nexi.
+
+## How a payment moves through the system
+
+The extension creates a local payment source and durable operation before making a provider request. Nexi returns a `paymentId` and a hosted checkout URL, and the browser is redirected to Nexi. A customer return only schedules reconciliation; it is never accepted as proof that money moved.
+
+Webhooks are authenticated with the Authorization value registered on the payment. Their event IDs are deduplicated in the database, and a background job retrieves the complete Nexi payment before changing Solidus financial state. This retrieval step makes duplicate and out-of-order notifications safe and is also how the extension resolves most uncertain network outcomes.
+
+Capture and refund requests reuse one persisted Nexi idempotency key for the same logical action. Payment creation and cancellation are not replayed after an uncertain response because the current endpoint contracts do not expose equivalent idempotency protection.
 
 ## Installation
 
-Add the renamed gem to the application:
+Once the first release is published to RubyGems, add the renamed gem to the host application:
+
+```ruby
+gem "solidus_nexi", "0.1.0.alpha.1"
+```
+
+Until then, development installations can use the renamed GitHub repository:
 
 ```ruby
 gem "solidus_nexi", github: "futhr/solidus-nexi"
 ```
 
-Then install and migrate:
+Install the bundle, mount the engine, copy its migrations, and migrate:
 
 ```sh
 bundle install
-bin/rails generate solidus_nexi:install
-bin/rails db:migrate
+bin/rails generate solidus_nexi:install --auto-run-migrations
 ```
 
-Set a 32-byte `SOLIDUS_PREFERENCES_MASTER_KEY` using the same secret-management system as the application. Nexi credentials are encrypted Solidus preferences backed by this key.
+The generator creates `config/initializers/solidus_nexi.rb` and mounts the engine at `/solidus_nexi`. Without `--auto-run-migrations`, it asks before running migrations and prints the command to run later when declined.
 
-Configure these environment values before creating the payment method:
+The host application must provide a 32-byte `SOLIDUS_PREFERENCES_MASTER_KEY`. Solidus uses this key to encrypt the API key and webhook secrets stored as payment-method preferences.
 
-```sh
-NEXI_CHECKOUT_API_KEY=replace-with-test-or-live-key
-NEXI_CHECKOUT_WEBHOOK_SECRET=RandomAlphanumericSecret123
-NEXI_CHECKOUT_ENVIRONMENT=test
-NEXI_CHECKOUT_COUNTRY=SWE
-NEXI_CHECKOUT_TERMS_URL=https://shop.example/terms
-NEXI_CHECKOUT_MERCHANT_TERMS_URL=https://shop.example/privacy
-NEXI_CHECKOUT_PUBLIC_BASE_URL=https://shop.example
-```
+## Configuration
 
-The public base URL must be the HTTPS origin at which the mounted engine is reachable. The webhook is created per Nexi payment and uses an opaque, 8–64 character alphanumeric Authorization value.
+The generated initializer can register an environment-backed preference source. These values belong in the application's secret manager, not in source control.
 
-To rotate webhook Authorization safely, move the old value to `NEXI_CHECKOUT_PREVIOUS_WEBHOOK_SECRET` and put the new value in `NEXI_CHECKOUT_WEBHOOK_SECRET`. New payments register the new value while callbacks from existing payments accept either value. Keep the previous value through the operational/refund lifetime of payments that registered it, then remove it; only one previous generation is accepted.
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `SOLIDUS_PREFERENCES_MASTER_KEY` | Yes | — | Encrypts secret Solidus preferences; must be exactly 32 bytes. |
+| `NEXI_CHECKOUT_API_KEY` | Yes | — | Nexi integration key sent in the Payment API Authorization header. |
+| `NEXI_CHECKOUT_WEBHOOK_SECRET` | Yes | — | Alphanumeric callback credential, 8–64 characters. |
+| `NEXI_CHECKOUT_PREVIOUS_WEBHOOK_SECRET` | During rotation | — | Previous callback credential accepted for payments created before rotation. |
+| `NEXI_CHECKOUT_ENVIRONMENT` | No | `test` | Use `test` or `live`; any other value is treated as test by the generated initializer. |
+| `NEXI_CHECKOUT_COUNTRY` | No | `SWE` | Three-letter ISO checkout country code. |
+| `NEXI_CHECKOUT_TERMS_URL` | Yes | — | Public HTTPS terms-and-conditions page. |
+| `NEXI_CHECKOUT_MERCHANT_TERMS_URL` | No | — | Public HTTPS privacy and cookie page. |
+| `NEXI_CHECKOUT_PUBLIC_BASE_URL` | Yes | — | HTTPS origin where the mounted return and webhook routes are reachable. |
 
-Create `SolidusNexi::PaymentMethod` in the Solidus admin, select the `nexi_checkout_env_credentials` preference source, associate it with the relevant stores, and choose whether `auto_capture` should ask Nexi Checkout to charge immediately after reservation. API keys and webhook secrets are intentionally not rendered back through the generic admin preference form.
+See [.env.example](.env.example) for a development template. Supplying both the API key and current webhook secret activates the generated static preference source; at that point the terms URL must also be present.
 
-## Starting hosted Checkout
+Create a `SolidusNexi::PaymentMethod` in the Solidus admin, associate it with the intended stores, and select the `nexi_checkout_env_credentials` preference source. Solidus's `auto_capture` setting controls whether the checkout asks Nexi to charge immediately after reservation. Secret preferences are deliberately absent from the generic admin form.
 
-The install generator mounts the engine at `/solidus_nexi`. A storefront can start or reuse a Checkout session with:
+### Rotating the webhook secret
+
+Put the new value in `NEXI_CHECKOUT_WEBHOOK_SECRET` and move the old value to `NEXI_CHECKOUT_PREVIOUS_WEBHOOK_SECRET`. New payments register the new value while callbacks for existing payments can authenticate with either generation.
+
+Keep the previous value until payments that registered it are no longer operational or refundable, then remove it. Only one previous generation is supported. Deactivating a payment method prevents new checkouts but does not disable authenticated callbacks for its existing payments.
+
+## Storefront integration
+
+The engine ships payment partials for storefronts that render Solidus payment-method partials. A custom or headless storefront can start or reuse a hosted checkout directly:
 
 ```http
 POST /solidus_nexi/checkout_sessions
@@ -67,39 +97,47 @@ Content-Type: application/json
 }
 ```
 
-JSON requests receive the Nexi `checkout_url`; browser form requests are redirected there. The guest token is always required, including for signed-in checkout, so an order number alone cannot initiate payment.
+The guest token is always required, including for a signed-in customer. An order number by itself is not sufficient authorization to create a provider payment.
 
-The browser return endpoint only schedules reconciliation and redirects using `config.return_path_resolver`. It never treats a customer redirect as proof of payment.
+JSON requests receive the local payment number, Nexi payment ID, hosted URL, and whether the open checkout was reused. Browser form requests receive an HTTP 303 redirect to the validated Nexi hosted URL.
+
+The default return and cancellation resolvers point to `/checkout/confirm` and `/checkout/payment`. Override them for a custom storefront:
 
 ```ruby
 SolidusNexi.configure do |config|
   config.public_base_url = ENV.fetch("NEXI_CHECKOUT_PUBLIC_BASE_URL")
-  config.return_path_resolver = ->(source) { "/orders/#{source.payments.last.order.number}" }
+  config.return_path_resolver = lambda do |source|
+    "/orders/#{source.payments.last.order.number}"
+  end
   config.cancel_path_resolver = ->(_source) { "/checkout/payment" }
 end
 ```
 
-## Reliability model
+Return and cancellation URLs contain an opaque source token. They schedule a provider retrieval when a Nexi payment ID is known and then redirect locally; neither endpoint trusts browser parameters as financial state.
 
-Before any create, capture, cancellation, or refund request, the extension persists a unique logical operation. Capture and refund reuse the same persisted Nexi idempotency key on retry. Current Nexi references do not advertise idempotency for payment creation or cancellation, so those operations are never blindly replayed after an uncertain result.
+## Operating the integration
 
-Webhook event IDs are stored under a database unique constraint. The receiver verifies Authorization before mutation, persists only safe envelope metadata, enqueues reconciliation, and returns HTTP 200 exactly. Reconciliation retrieves the payment by Nexi `paymentId`; duplicate and out-of-order notifications therefore cannot regress a terminal Solidus payment.
+Admin payment views expose the provider payment ID, charge ID, latest provider-derived status, reconciliation time, and whether an operation needs reconciliation. The extension intentionally does not retain whole Nexi responses or webhook payloads because those documents may contain customer or payment-method data that Solidus does not need.
 
-Operational state is available in:
+To enqueue reconciliation for one payment source:
 
-- `solidus_nexi_payment_sources` for provider IDs and authoritative cumulative amounts;
-- `solidus_nexi_operations` for logical requests, idempotency keys, and unknown outcomes;
-- `solidus_nexi_webhook_receipts` for event deduplication and processing status.
+```sh
+bin/rails 'solidus_nexi:reconcile[42]'
+```
 
-Run `bin/rails 'solidus_nexi:reconcile[42]'` for one source, or `bin/rails solidus_nexi:reconcile` to enqueue all stale/unknown operations that have a known Nexi payment ID.
+To enqueue every known source with a stale or uncertain operation:
 
-Do not log or persist full Nexi payloads: retrieval responses may include consumer or masked-card data that this extension does not need.
+```sh
+bin/rails solidus_nexi:reconcile
+```
 
-## Migrating from `spree_dibs`
+The all-sources task can only retrieve records that already have a Nexi payment ID. An uncertain creation without a stored ID must be recovered from an authenticated webhook carrying the order reference; do not create another checkout blindly.
 
-See [docs/migration.md](docs/migration.md). Old DIBS login/password settings and card sources are not migrated or assumed to be valid Nexi Checkout credentials.
+See [Operations](docs/operations.md) for the state model, retry policy, secret rotation, and incident checklist. See [Migration from spree_dibs](docs/migration.md) before replacing a historical installation, and read [Security](SECURITY.md) before production deployment. Maintainers preparing the future RubyGems package should follow [Releasing](docs/releasing.md).
 
 ## Development
+
+Set up the isolated bundle and dummy application, then run the suite:
 
 ```sh
 bin/setup
@@ -108,7 +146,16 @@ bin/rake
 bundle exec rubocop
 ```
 
-Use `SOLIDUS_BRANCH=v4.6` and an appropriate `RAILS_VERSION` to exercise the secondary compatibility target. Provider fixtures are sanitized and live under `spec/fixtures/nexi`. A real sandbox smoke test additionally requires merchant-specific Nexi test credentials and cannot be replaced by fixture tests.
+Use `SOLIDUS_BRANCH=v4.6 RAILS_VERSION=7.1` to exercise the secondary Solidus target. The CI matrix is the source of truth for the complete supported Ruby/Solidus combinations.
+
+Provider examples are sanitized under `spec/fixtures/nexi`. They make local tests deterministic but do not replace a real merchant test-environment run covering hosted completion, authenticated callbacks, repeated idempotent mutations, cancellation, refund, and lost-response reconciliation.
+
+## Provider references
+
+- [Nexi Checkout Payment API](https://developer.nexigroup.com/nexi-checkout/en-EU/api/payment-v1/)
+- [Nexi hosted Checkout integration](https://developer.nexigroup.com/nexi-checkout/en-EU/docs/web-integration/integrate-checkout-on-your-website-hosted/)
+- [Nexi webhook integration](https://developer.nexigroup.com/nexi-checkout/en-EU/docs/track-events-using-webhooks/)
+- [Solidus payments and refunds](https://guides.solidus.io/next/advanced-solidus/payments-and-refunds/)
 
 ## License
 
