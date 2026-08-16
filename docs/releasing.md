@@ -54,6 +54,8 @@ Keep release history linear and reviewable:
 5. Publish the exact gem artifact that was inspected; do not rebuild from a different tree.
 6. Verify the RubyGems page, checksums, metadata links, and installation in a clean application.
 
+An annotated alpha tag may preserve a reviewed source snapshot before merchant validation is complete. That tag does not authorize RubyGems publication: the provider test gate and every first-release check above must still pass before `gem push`.
+
 Suggested tag command:
 
 ```sh
