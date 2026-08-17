@@ -32,7 +32,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency "solidus_core", ">= 4.6", "< 5"
   spec.add_dependency "solidus_support", ">= 0.12", "< 1"
-  spec.add_dependency "railties", ">= 7.2.3.2", "< 7.3"
+  spec.add_dependency "railties", ">= 7.2.3.2", "< 8.2"
 
   spec.add_development_dependency "solidus_dev_support", "~> 2.12"
   spec.add_development_dependency "bundler-audit", "~> 0.9"
