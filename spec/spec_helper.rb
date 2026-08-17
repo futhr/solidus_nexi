@@ -16,7 +16,6 @@ SimpleCov.start("rails") do
     minimum_coverage line: 94, branch: 72
     minimum_coverage_by_file 80
   end
-  add_filter %r{/lib/generators/.*/install/}
   add_filter %r{/lib/.*/factories.rb}
   add_filter %r{/lib/.*/version.rb}
 end
@@ -52,9 +51,7 @@ RSpec.configure do |config|
     unless ENV["NEXI_CHECKOUT_ENVIRONMENT"] == "test"
       raise "Provider specs are restricted to NEXI_CHECKOUT_ENVIRONMENT=test"
     end
-    if ENV["NEXI_CHECKOUT_API_KEY"].blank?
-      raise "NEXI_CHECKOUT_API_KEY is required for provider specs"
-    end
+    SolidusNexi::DevelopmentEnvironment.validate!
 
     WebMock.allow_net_connect!
   end

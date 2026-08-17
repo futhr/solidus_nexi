@@ -26,7 +26,7 @@ Run this only with test credentials:
 NEXI_TEST_ENVIRONMENT=1 bundle exec rspec spec/provider
 ```
 
-The provider specs refuse any `NEXI_CHECKOUT_ENVIRONMENT` other than `test`. They verify the merchant key with a read-only request, create one disposable 100 SEK hosted checkout, and retrieve it through Nexi's Payment API. The checkout is not completed, charged, or subscribed to webhooks. It remains visible in the TEST portal until Nexi expires it.
+The provider specs refuse any `NEXI_CHECKOUT_ENVIRONMENT` other than `test`. They verify the merchant key with a read-only request, build a 100 SEK checkout through the same Solidus order serializer and webhook payload used at runtime, create it in Nexi, and retrieve it through the Payment API. The checkout is not completed or charged. It remains visible in the TEST portal until Nexi expires it.
 
 These specs are excluded from ordinary CI. Do not put merchant credentials in GitHub repository secrets merely to make pull-request checks call Nexi.
 

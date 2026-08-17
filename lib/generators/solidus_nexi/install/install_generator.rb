@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "rails/generators"
+
 module SolidusNexi
   module Generators
     class InstallGenerator < Rails::Generators::Base
