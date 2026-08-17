@@ -37,6 +37,7 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "solidus_dev_support", "~> 2.12"
   spec.add_development_dependency "bundler-audit", "~> 0.9"
   spec.add_development_dependency "dotenv", "~> 3.1"
+  spec.add_development_dependency "faraday-retry", "~> 2.4"
   spec.add_development_dependency "rubocop-rails", "~> 2.33"
   spec.add_development_dependency "simplecov-lcov", "~> 0.9"
   spec.add_development_dependency "webmock", "~> 3.24"
