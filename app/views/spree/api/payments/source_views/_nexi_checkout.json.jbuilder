@@ -5,3 +5,4 @@ json.reserved_amount_minor payment_source.reserved_amount_minor
 json.charged_amount_minor payment_source.charged_amount_minor
 json.refunded_amount_minor payment_source.refunded_amount_minor
 json.cancelled_amount_minor payment_source.cancelled_amount_minor
+json.reconciliation_required payment_source.reconciliation_required

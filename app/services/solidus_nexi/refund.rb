@@ -17,6 +17,24 @@ module SolidusNexi
       end
 
       dispatch!(operation, retry_unknown: true)
+      submit_refund(operation, charge_id)
+    rescue Nexi::RateLimitError => error
+      retryable!(operation, error)
+    rescue Nexi::TimeoutUnknownOutcome => error
+      unknown!(operation, error)
+    rescue Nexi::MalformedResponseError => error
+      unknown!(operation, error)
+    rescue ActiveRecord::ActiveRecordError => error
+      persistence_unknown!(operation, error) if dispatched_after_rollback?(operation)
+      raise
+    rescue Nexi::Error => error
+      reject!(operation, error) if operation
+      raise
+    end
+
+    private
+
+    def submit_refund(operation, charge_id)
       response = client.refund(
         charge_id:,
         amount_minor: @amount_minor,
@@ -33,19 +51,7 @@ module SolidusNexi
         @source.update!(provider_status: "refund_pending")
       end
       Result.new(authorization: refund_id, provider_request_id: response.provider_request_id)
-    rescue Nexi::TimeoutUnknownOutcome => error
-      unknown!(operation, error)
-    rescue Nexi::MalformedResponseError => error
-      unknown!(operation, error)
-    rescue ActiveRecord::ActiveRecordError => error
-      persistence_unknown!(operation, error) if operation&.status == "dispatched"
-      raise
-    rescue Nexi::Error => error
-      reject!(operation, error) if operation
-      raise
     end
-
-    private
 
     def validate_full_refund!
       prior_refunds = @payment.refunds.where.not(id: @refund.id).sum(:amount)

@@ -14,6 +14,8 @@ module SolidusNexi
 
     before_validation :assign_return_token, on: :create
 
+    scope :requiring_reconciliation, -> { where(reconciliation_required: true) }
+
     def actions
       %w[capture void credit]
     end

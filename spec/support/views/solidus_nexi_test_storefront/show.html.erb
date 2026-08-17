@@ -1,0 +1,4 @@
+<h1>Payment</h1>
+<%= form_with url: "#", method: :post do %>
+  <%= render partial: "spree/checkout/payment/nexi_checkout", locals: {payment_method: @payment_method} %>
+<% end %>

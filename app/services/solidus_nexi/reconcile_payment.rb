@@ -32,11 +32,13 @@ module SolidusNexi
 
       payment.with_lock do
         payment.reload
-        update_source!(snapshot, amounts, mapping)
         reconcile_operations!(payment, snapshot, amounts)
         if recent_local_mutation?(payment)
+          update_source!(snapshot, amounts, mapping)
           ReconcilePaymentJob.set(wait: LOCAL_MUTATION_GRACE).perform_later(@source.id)
         else
+          mapping = mapping_for_payment(payment, mapping)
+          update_source!(snapshot, amounts, mapping)
           apply_financial_records!(payment, snapshot, amounts)
           apply_payment_state!(payment, mapping)
         end
@@ -54,28 +56,74 @@ module SolidusNexi
     end
 
     def recover_source(snapshot)
-      reference = @order_reference.presence || snapshot.order_reference
-      return unless reference.present? && snapshot.order_reference == reference
+      known_source = PaymentSource.find_by(
+        payment_method: @payment_method,
+        provider_payment_id: @provider_payment_id
+      )
+      return known_source if known_source
 
-      order = Spree::Order.find_by(number: reference)
-      return unless order
-
-      payment = order.payments
-        .where(payment_method: @payment_method, source_type: "SolidusNexi::PaymentSource")
-        .where(state: %w[checkout processing pending completed])
-        .order(created_at: :desc)
-        .first
+      payment = recoverable_payment(snapshot)
       return unless payment
 
       payment.source.with_lock do
+        payment.source.reload
         if payment.source.provider_payment_id.blank?
           payment.source.update!(provider_payment_id: @provider_payment_id, provider_status: "recovered")
           payment.update!(response_code: @provider_payment_id)
+        elsif payment.source.provider_payment_id != @provider_payment_id
+          raise Nexi::ConflictError, "Nexi payment is already bound to another checkout"
         end
       end
       payment.source
-    rescue ActiveRecord::RecordNotUnique
-      PaymentSource.find_by(payment_method: @payment_method, provider_payment_id: @provider_payment_id)
+    rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
+      PaymentSource.find_by(
+        payment_method: @payment_method,
+        provider_payment_id: @provider_payment_id
+      ) || raise
+    end
+
+    def recoverable_payment(snapshot)
+      validate_event_reference!(snapshot)
+      return payment_from_provider_reference!(snapshot) if snapshot.my_reference.present?
+
+      order = Spree::Order.find_by(number: snapshot.order_reference)
+      return unless order
+
+      candidates = eligible_payments(order).select { |payment| payment.source.provider_payment_id.blank? }
+      candidates.one? ? candidates.first : nil
+    end
+
+    def payment_from_provider_reference!(snapshot)
+      payment = Spree::Payment.find_by(number: snapshot.my_reference)
+      unless payment && eligible_payment?(payment) && provider_order_matches?(payment, snapshot)
+        raise Nexi::ConflictError, "Nexi payment reference does not match a recoverable Solidus payment"
+      end
+
+      payment
+    end
+
+    def eligible_payments(order)
+      order.payments
+        .where(payment_method: @payment_method, source_type: "SolidusNexi::PaymentSource")
+        .where(state: %w[checkout processing pending completed])
+        .includes(:source)
+        .to_a
+    end
+
+    def eligible_payment?(payment)
+      payment.payment_method == @payment_method &&
+        payment.source_type == "SolidusNexi::PaymentSource" &&
+        %w[checkout processing pending completed].include?(payment.state)
+    end
+
+    def validate_event_reference!(snapshot)
+      return if @order_reference.blank? || @order_reference == snapshot.order_reference
+
+      raise Nexi::ConflictError, "webhook order reference does not match the Nexi payment"
+    end
+
+    def provider_order_matches?(payment, snapshot)
+      snapshot.order_reference == OrderSerializer.order_reference(payment.order.number)
     end
 
     def payment_for(source)
@@ -88,7 +136,7 @@ module SolidusNexi
       unless snapshot.amount_minor == local_amount && snapshot.currency == payment.currency
         raise Nexi::ConflictError, "Nexi payment does not match the Solidus payment"
       end
-      if snapshot.order_reference.present? && snapshot.order_reference != payment.order.number
+      if snapshot.order_reference != OrderSerializer.order_reference(payment.order.number)
         raise Nexi::ConflictError, "Nexi payment has a different order reference"
       end
     end
@@ -102,7 +150,20 @@ module SolidusNexi
         charged_amount_minor: amounts[:charged],
         refunded_amount_minor: amounts[:refunded],
         cancelled_amount_minor: amounts[:cancelled],
+        reconciliation_required: mapping.reconciliation_required,
         last_reconciled_at: Time.current
+      )
+    end
+
+    def mapping_for_payment(payment, mapping)
+      target = mapping.target_state
+      return mapping if target.blank? || payment.state == target
+      return mapping if Nexi::StateMapper.new.transition_allowed?(payment.state, target)
+
+      Nexi::StateMapper::Mapping.new(
+        target_state: nil,
+        reconciliation_required: true,
+        reason: "local_state_conflict"
       )
     end
 
@@ -136,8 +197,7 @@ module SolidusNexi
 
     def recent_local_mutation?(payment)
       Operation.where(payment:, kind: %w[charge cancel refund], status: %w[dispatched succeeded])
-        .where(updated_at: LOCAL_MUTATION_GRACE.ago..)
-        .exists?
+        .exists?(updated_at: LOCAL_MUTATION_GRACE.ago..)
     end
 
     def apply_financial_records!(payment, snapshot, amounts)

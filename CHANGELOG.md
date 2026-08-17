@@ -4,6 +4,22 @@ This file records user-visible changes in reverse chronological order. The curre
 
 The legacy repository did not retain release tags for its original `2.0.3` and `2.1.0` versions. Those entries are reconstructed from the versions declared in the gemspec and version file. The `v2.1.0` tag was added on 2026-08-16 to preserve the final legacy tree before the rewrite.
 
+## Unreleased
+
+### Fixed
+
+- Reconcile webhooks against the exact Nexi payment instead of the newest checkout, and use Nexi `myReference` for unambiguous recovery when the local provider ID was not persisted.
+- Keep unexpected partial provider state and terminal local-state conflicts visible until an operator resolves them.
+- Return rate-limited mutations to a safe retryable state without changing their persisted idempotency key.
+- Classify empty or non-JSON provider errors by HTTP status and bound streamed HTTP responses before buffering them.
+- Reload durable operations after a database rollback so provider-success/local-failure races are always marked for reconciliation.
+
+### Changed
+
+- Require the patched Rails 7.2 line, add Rails-aware linting and complexity budgets, and run RubySec dependency checks in CI.
+- Load a gitignored repository `.env` only for development and test, create it from `.env.example` during first-time setup, and document the free Nexi test-account lifecycle required before production.
+- Add Solidus-style storefront and admin system coverage, fault-injection tests, an opt-in merchant TEST API contract, and a strict environment checker.
+
 ## 0.1.0.alpha.1 — 2026-08-16
 
 This is the first tagged source prerelease under the renamed `solidus_nexi` gem and `SolidusNexi` namespace. It has not yet been published to RubyGems. This is a replacement for `spree_dibs`, not an API-compatible update.

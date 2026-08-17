@@ -14,7 +14,7 @@ module SolidusNexi
     validates :status, inclusion: {in: STATUSES}
     validates :logical_reference, :request_fingerprint, :currency, presence: true
     validates :amount_minor, numericality: {only_integer: true, greater_than: 0}
-    validates :idempotency_key, uniqueness: true, allow_nil: true, length: {maximum: 63}
+    validates :idempotency_key, uniqueness: true, allow_nil: true, length: {maximum: 64}
     validates :logical_reference, uniqueness: {scope: %i[payment_id kind]}
     validate :idempotency_key_matches_kind
 
@@ -80,6 +80,17 @@ module SolidusNexi
       )
     end
 
+    def mark_retryable!(error)
+      update!(
+        status: "pending",
+        provider_request_id: safe_error_attribute(error, :provider_request_id),
+        provider_code: safe_error_attribute(error, :provider_code),
+        reconciliation_required: false,
+        dispatched_at: nil,
+        completed_at: nil
+      )
+    end
+
     def mark_reconciled!
       update!(status: "reconciled", reconciliation_required: false, completed_at: Time.current)
     end
@@ -93,7 +104,7 @@ module SolidusNexi
     def idempotency_key_matches_kind
       if IDEMPOTENT_KINDS.include?(kind) && idempotency_key.blank?
         errors.add(:idempotency_key, "is required for #{kind}")
-      elsif !IDEMPOTENT_KINDS.include?(kind) && idempotency_key.present?
+      elsif IDEMPOTENT_KINDS.exclude?(kind) && idempotency_key.present?
         errors.add(:idempotency_key, "is not supported by Nexi for #{kind}")
       end
     end

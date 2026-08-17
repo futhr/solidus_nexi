@@ -12,6 +12,24 @@ module SolidusNexi
       end
 
       dispatch!(operation, retry_unknown: true)
+      submit_charge(operation)
+    rescue Nexi::RateLimitError => error
+      retryable!(operation, error)
+    rescue Nexi::TimeoutUnknownOutcome => error
+      unknown!(operation, error)
+    rescue Nexi::MalformedResponseError => error
+      unknown!(operation, error)
+    rescue ActiveRecord::ActiveRecordError => error
+      persistence_unknown!(operation, error) if dispatched_after_rollback?(operation)
+      raise
+    rescue Nexi::Error => error
+      reject!(operation, error) if operation
+      raise
+    end
+
+    private
+
+    def submit_charge(operation)
       response = client.charge(
         payment_id: @source.provider_payment_id,
         amount_minor: @amount_minor,
@@ -27,19 +45,7 @@ module SolidusNexi
         @source.update!(provider_charge_id: charge_id, provider_status: "charged")
       end
       Result.new(authorization: charge_id, provider_request_id: response.provider_request_id)
-    rescue Nexi::TimeoutUnknownOutcome => error
-      unknown!(operation, error)
-    rescue Nexi::MalformedResponseError => error
-      unknown!(operation, error)
-    rescue ActiveRecord::ActiveRecordError => error
-      persistence_unknown!(operation, error) if operation&.status == "dispatched"
-      raise
-    rescue Nexi::Error => error
-      reject!(operation, error) if operation
-      raise
     end
-
-    private
 
     def validate_full_capture!
       full_amount = Nexi::Money.to_minor(@payment.uncaptured_amount, @payment.currency)

@@ -15,7 +15,7 @@ The gem is currently an alpha prerelease. Complete a merchant-specific Nexi test
 
 ## Compatibility and scope
 
-The primary target is Solidus 4.7. Solidus 4.6 remains a secondary target while it can be supported without compromising the integration. Ruby 3.2 and newer are supported; CI covers Ruby 3.2 through 4.0 on the primary target.
+The primary target is Solidus 4.7. Solidus 4.6 remains a secondary target while it can be supported without compromising the integration. Ruby 3.2 and newer and the maintained Rails 7.2 line are supported; CI covers Ruby 3.2 through 4.0 on the primary target.
 
 The initial release supports:
 
@@ -63,6 +63,24 @@ The generator creates `config/initializers/solidus_nexi.rb` and mounts the engin
 
 The host application must provide a 32-byte `SOLIDUS_PREFERENCES_MASTER_KEY`. Solidus uses this key to encrypt the API key and webhook secrets stored as payment-method preferences.
 
+### Free Nexi test account
+
+Yes, the Nexi test account is free. New Checkout Portal accounts start in test mode.
+
+1. [Register with Nexi](https://developer.nexigroup.com/nexi-checkout/en-EU/docs/create-a-checkout-portal-account/) using an email address and phone number, verify the email, and sign in.
+2. In the Checkout Portal, open **Company → Integration** and copy the **test Secret API key**. This hosted integration does not use the public Checkout key.
+3. Generate the two local secrets:
+
+   ```sh
+   openssl rand -hex 16 # SOLIDUS_PREFERENCES_MASTER_KEY: 32 characters
+   openssl rand -hex 24 # NEXI_CHECKOUT_WEBHOOK_SECRET
+   ```
+
+4. Run `bin/setup`. It creates `.env` from [.env.example](.env.example) when missing. Put the generated values and test Secret API key there, leave the previous webhook secret empty, then run `bin/check-env`. Keep `NEXI_CHECKOUT_ENVIRONMENT=test` and use a public HTTPS origin for `NEXI_CHECKOUT_PUBLIC_BASE_URL`; a local server needs an HTTPS tunnel so Nexi can reach its webhook.
+5. Install the payment method as described below, then pay with a card from Nexi's [test-card list](https://developer.nexigroup.com/nexi-checkout/en-EU/docs/test-card-processing/). Test payments move no real money.
+
+Before requesting a live account, run both payment paths: reserve → capture and reserve → cancel with auto-capture off, then charge → refund with auto-capture on. Confirm the webhook reaches the app, repeated reconciliation creates no duplicate capture or refund, and the matching payment is visible in the Checkout Portal. Nexi's [test-environment guide](https://developer.nexigroup.com/nexi-checkout/en-EU/docs/test-environment/) lists the test endpoints and data.
+
 ## Configuration
 
 The generated initializer can register an environment-backed preference source. These values belong in the application's secret manager, not in source control.
@@ -70,7 +88,7 @@ The generated initializer can register an environment-backed preference source. 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
 | `SOLIDUS_PREFERENCES_MASTER_KEY` | Yes | — | Encrypts secret Solidus preferences; must be exactly 32 bytes. |
-| `NEXI_CHECKOUT_API_KEY` | Yes | — | Nexi integration key sent in the Payment API Authorization header. |
+| `NEXI_CHECKOUT_API_KEY` | Yes | — | Portal Secret key sent in the Payment API Authorization header; this is not the Checkout key. |
 | `NEXI_CHECKOUT_WEBHOOK_SECRET` | Yes | — | Alphanumeric callback credential, 8–64 characters. |
 | `NEXI_CHECKOUT_PREVIOUS_WEBHOOK_SECRET` | During rotation | — | Previous callback credential accepted for payments created before rotation. |
 | `NEXI_CHECKOUT_ENVIRONMENT` | No | `test` | Use `test` or `live`; any other value is treated as test by the generated initializer. |
@@ -79,7 +97,7 @@ The generated initializer can register an environment-backed preference source. 
 | `NEXI_CHECKOUT_MERCHANT_TERMS_URL` | No | — | Public HTTPS privacy and cookie page. |
 | `NEXI_CHECKOUT_PUBLIC_BASE_URL` | Yes | — | HTTPS origin where the mounted return and webhook routes are reachable. |
 
-See [.env.example](.env.example) for a development template. Supplying both the API key and current webhook secret activates the generated static preference source; at that point the terms URL must also be present.
+Development and test commands load the repository-root `.env` without overwriting variables already exported by the shell. Staging and production never load it. See [.env.example](.env.example) for the complete template. Supplying both the API key and current webhook secret activates the generated static preference source; at that point the terms URL must also be present.
 
 Create a `SolidusNexi::PaymentMethod` in the Solidus admin, associate it with the intended stores, and select the `nexi_checkout_env_credentials` preference source. Solidus's `auto_capture` setting controls whether the checkout asks Nexi to charge immediately after reservation. Secret preferences are deliberately absent from the generic admin form.
 
@@ -148,14 +166,18 @@ Set up the isolated bundle and dummy application, then run the suite:
 
 ```sh
 bin/setup
+bin/check-env
 bin/rake extension:test_app
-bin/rake
+CI=1 bin/rake
 bundle exec rubocop
+bundle exec bundler-audit check --update --ignore CVE-2026-47736 CVE-2026-47737
 ```
 
-Use `SOLIDUS_BRANCH=v4.6 RAILS_VERSION=7.1` to exercise the secondary Solidus target. The CI matrix is the source of truth for the complete supported Ruby/Solidus combinations.
+Use `SOLIDUS_BRANCH=v4.6 RAILS_VERSION=7.2` to exercise the secondary Solidus target. The CI matrix is the source of truth for the complete supported Ruby/Solidus combinations.
 
 Provider examples are sanitized under `spec/fixtures/nexi`. They make local tests deterministic but do not replace a real merchant test-environment run covering hosted completion, authenticated callbacks, repeated idempotent mutations, cancellation, refund, and lost-response reconciliation.
+
+Run `NEXI_TEST_ENVIRONMENT=1 bundle exec rspec spec/provider` for the opt-in merchant API contract. It refuses live mode and creates one uncompleted disposable TEST checkout. The ordinary suite never contacts Nexi. See [Testing](docs/testing.md) for the Solidus system-test coverage and the hosted card/3D Secure release gate.
 
 ## Provider references
 

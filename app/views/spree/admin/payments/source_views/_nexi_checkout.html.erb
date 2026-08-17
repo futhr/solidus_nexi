@@ -11,6 +11,6 @@
 </dl>
 
 <% unknown_operations = SolidusNexi::Operation.where(payment: payment, reconciliation_required: true) %>
-<% if unknown_operations.exists? %>
+<% if source.reconciliation_required? || unknown_operations.exists? %>
   <p><%= t("solidus_nexi.reconciliation_required") %></p>
 <% end %>

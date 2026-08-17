@@ -54,10 +54,19 @@ module SolidusNexi
       raise error
     end
 
+    def retryable!(operation, error)
+      operation.mark_retryable!(error) if operation&.status == "dispatched"
+      raise error
+    end
+
     def persistence_unknown!(operation, error)
       operation.mark_unknown!(error)
       ReconcilePaymentJob.perform_later(@source.id) if @source.provider_payment_id.present?
       raise Nexi::ReconciliationRequired, "Nexi succeeded but local persistence must be reconciled"
+    end
+
+    def dispatched_after_rollback?(operation)
+      operation&.persisted? && operation.reload.status == "dispatched"
     end
 
     def client

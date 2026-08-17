@@ -1,6 +1,49 @@
 inherit_gem:
   solidus_dev_support: lib/solidus_dev_support/rubocop/config.yml
 
+plugins:
+  - rubocop-rails
+
 AllCops:
   NewCops: enable
   TargetRubyVersion: 3.2
+
+Metrics/AbcSize:
+  Enabled: true
+  Max: 30
+
+Metrics/BlockLength:
+  Enabled: true
+  Max: 35
+  Exclude:
+    - "spec/**/*"
+    - "*.gemspec"
+    - "lib/tasks/**/*"
+
+Metrics/ClassLength:
+  Enabled: true
+  Max: 220
+
+Metrics/CyclomaticComplexity:
+  Enabled: true
+  Max: 10
+
+Metrics/MethodLength:
+  Enabled: true
+  Max: 35
+
+Metrics/ModuleLength:
+  Enabled: true
+  Max: 220
+
+Metrics/ParameterLists:
+  Enabled: true
+  Max: 7
+
+Metrics/PerceivedComplexity:
+  Enabled: true
+  Max: 10
+
+# A reusable engine cannot assume the host defines ApplicationJob.
+Rails/ApplicationJob:
+  Enabled: false

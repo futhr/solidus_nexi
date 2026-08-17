@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../Gemfile", __dir__)
+
+require "bundler/setup"
+require_relative "../dev/load_env"
+
+begin
+  SolidusNexi::DevelopmentEnvironment.validate!
+  puts "Development environment is valid for Nexi Checkout."
+rescue ArgumentError => error
+  warn error.message
+  exit 1
+end

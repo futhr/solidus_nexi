@@ -14,6 +14,22 @@ module SolidusNexi
       end
 
       dispatch!(operation)
+      submit_cancel(operation)
+    rescue Nexi::RateLimitError => error
+      retryable!(operation, error)
+    rescue Nexi::TimeoutUnknownOutcome => error
+      unknown!(operation, error)
+    rescue Nexi::Error => error
+      reject!(operation, error) if operation
+      raise
+    rescue ActiveRecord::ActiveRecordError => error
+      persistence_unknown!(operation, error) if dispatched_after_rollback?(operation)
+      raise
+    end
+
+    private
+
+    def submit_cancel(operation)
       response = client.cancel(payment_id: @source.provider_payment_id, amount_minor: @amount_minor)
       Operation.transaction do
         operation.mark_succeeded!(
@@ -23,17 +39,7 @@ module SolidusNexi
         @source.update!(provider_status: "cancelled", cancelled_amount_minor: @amount_minor)
       end
       Result.new(authorization: @source.provider_payment_id, provider_request_id: response.provider_request_id)
-    rescue Nexi::TimeoutUnknownOutcome => error
-      unknown!(operation, error)
-    rescue Nexi::Error => error
-      reject!(operation, error) if operation
-      raise
-    rescue ActiveRecord::ActiveRecordError => error
-      persistence_unknown!(operation, error) if operation&.status == "dispatched"
-      raise
     end
-
-    private
 
     def validate_full_cancel!
       full_amount = Nexi::Money.to_minor(@payment.amount, @payment.currency)

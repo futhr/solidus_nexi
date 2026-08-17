@@ -48,6 +48,6 @@ RSpec.describe "SolidusNexi webhooks", type: :request do
   end
 
   def fixture(path)
-    File.read(Rails.root.join("..", "fixtures", path))
+    Rails.root.join("..", "fixtures", path).read
   end
 end

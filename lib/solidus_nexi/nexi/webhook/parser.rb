@@ -26,11 +26,14 @@ module SolidusNexi
             name: required_string(envelope, "event", EVENT_NAME),
             occurred_at: parse_time(envelope.fetch("timestamp")),
             merchant_id: required_string(envelope, "merchantId", MERCHANT_ID),
-            merchant_number: envelope["merchantNumber"]&.to_s,
+            merchant_number: optional_string(envelope["merchantNumber"], pattern: MERCHANT_ID),
             payment_id: required_string(data, "paymentId", EVENT_ID),
-            charge_id: optional_string(data["chargeId"]),
-            refund_id: optional_string(data["refundId"]),
-            order_reference: optional_string(data.dig("order", "reference") || data["orderReference"])
+            charge_id: optional_string(data["chargeId"], pattern: EVENT_ID),
+            refund_id: optional_string(data["refundId"], pattern: EVENT_ID),
+            order_reference: optional_string(
+              data.dig("order", "reference") || data["orderReference"],
+              maximum_bytes: 128
+            )
           )
         rescue JSON::ParserError
           raise ValidationError, "webhook payload is not valid JSON"
@@ -54,8 +57,15 @@ module SolidusNexi
           value
         end
 
-        def optional_string(value)
-          value.to_s unless value.nil? || value.to_s.empty?
+        def optional_string(value, pattern: nil, maximum_bytes: nil)
+          return if value.nil? || value.to_s.empty?
+
+          string = value.to_s
+          valid = string.exclude?("\0") && (!pattern || pattern.match?(string)) &&
+            (!maximum_bytes || string.bytesize <= maximum_bytes)
+          raise ValidationError, "optional webhook field has an invalid format" unless valid
+
+          string
         end
 
         def parse_time(value)

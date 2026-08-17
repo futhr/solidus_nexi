@@ -31,7 +31,7 @@ jobs:
           - {solidus: v4.7, rails: "7.2", ruby: "3.3"}
           - {solidus: v4.7, rails: "7.2", ruby: "3.4"}
           - {solidus: v4.7, rails: "7.2", ruby: "4.0"}
-          - {solidus: v4.6, rails: "7.1", ruby: "3.2"}
+          - {solidus: v4.6, rails: "7.2", ruby: "3.2"}
           - {solidus: v4.6, rails: "7.2", ruby: "3.3"}
     env:
       SOLIDUS_BRANCH: ${{ matrix.solidus }}
@@ -66,6 +66,42 @@ jobs:
           files: ./coverage/lcov/lcov.info
           fail_ci_if_error: true
 
+  postgres:
+    name: PostgreSQL 16
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB: postgresql
+      DB_HOST: 127.0.0.1
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      SOLIDUS_BRANCH: v4.7
+      RAILS_VERSION: "7.2"
+      SOLIDUS_PREFERENCES_MASTER_KEY: 0123456789abcdef0123456789abcdef
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+      - name: Build PostgreSQL test application
+        run: bundle exec rake extension:test_app
+      - name: Run test suite
+        run: bundle exec rake
+
   lint:
     name: Ruby style
     runs-on: ubuntu-24.04
@@ -79,6 +115,24 @@ jobs:
           bundler-cache: true
       - name: Run RuboCop
         run: bundle exec rubocop
+
+  security:
+    name: Dependency audit
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+      - name: Check dependencies against RubySec
+        # Puma is pulled in only by solidus_dev_support and is absent from the
+        # published gem's runtime dependencies. That helper currently pins < 7.
+        run: >-
+          bundle exec bundler-audit check --update
+          --ignore CVE-2026-47736 CVE-2026-47737
 
   package:
     name: RubyGems package
@@ -106,12 +160,14 @@ jobs:
             db/migrate/20260816090000_create_solidus_nexi_payment_sources.rb
             db/migrate/20260816090100_create_solidus_nexi_operations.rb
             db/migrate/20260816090200_create_solidus_nexi_webhook_receipts.rb
+            db/migrate/20260817090000_add_reconciliation_required_to_solidus_nexi_payment_sources.rb
             README.md
             CHANGELOG.md
             SECURITY.md
             docs/migration.md
             docs/operations.md
             docs/releasing.md
+            docs/testing.md
           ]
           missing = required - files
           abort "Missing packaged files: #{missing.join(', ')}" unless missing.empty?

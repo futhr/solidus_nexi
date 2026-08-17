@@ -17,7 +17,22 @@ RSpec.describe SolidusNexi::Nexi::PaymentSnapshot do
       .to raise_error(SolidusNexi::Nexi::MalformedResponseError, /different payment/)
   end
 
+  it "extracts the merchant reference used for unambiguous recovery" do
+    body = JSON.parse(fixture("nexi/payments/reserved.json"))
+    body.fetch("payment")["myReference"] = "P123456789"
+
+    expect(described_class.new(body).my_reference).to eq("P123456789")
+  end
+
+  it "rejects unbounded merchant and order references" do
+    body = JSON.parse(fixture("nexi/payments/reserved.json"))
+    body.fetch("payment")["myReference"] = "x" * 129
+
+    expect { described_class.new(body) }
+      .to raise_error(SolidusNexi::Nexi::MalformedResponseError, /myReference/)
+  end
+
   def fixture(path)
-    File.read(Rails.root.join("..", "fixtures", path))
+    Rails.root.join("..", "fixtures", path).read
   end
 end

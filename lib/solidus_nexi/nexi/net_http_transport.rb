@@ -28,10 +28,20 @@ module SolidusNexi
         request = request_class(method).new(uri.request_uri, headers)
         request.body = body if body
 
-        response = connection(uri).request(request)
-        response_body = response.body.to_s
-        if response_body.bytesize > MAX_RESPONSE_BYTES
-          raise MalformedResponseError, "Nexi response exceeded #{MAX_RESPONSE_BYTES} bytes"
+        response_body = String.new(capacity: 16_384, encoding: Encoding::BINARY)
+        response = connection(uri).request(request) do |http_response|
+          content_length = http_response["content-length"].to_i
+          if content_length > MAX_RESPONSE_BYTES
+            raise MalformedResponseError, "Nexi response exceeded #{MAX_RESPONSE_BYTES} bytes"
+          end
+
+          http_response.read_body do |chunk|
+            if response_body.bytesize + chunk.bytesize > MAX_RESPONSE_BYTES
+              raise MalformedResponseError, "Nexi response exceeded #{MAX_RESPONSE_BYTES} bytes"
+            end
+
+            response_body << chunk
+          end
         end
 
         Response.new(status: response.code.to_i, body: response_body, headers: response.to_hash)

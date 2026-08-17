@@ -33,7 +33,23 @@ RSpec.describe "Nexi webhook contract" do
       .to raise_error(SolidusNexi::Nexi::ValidationError, /too large/)
   end
 
+  it "rejects malformed optional operation identifiers" do
+    payload = JSON.parse(fixture("nexi/webhooks/charge_created.json"))
+    payload.fetch("data")["chargeId"] = "not valid!"
+
+    expect { SolidusNexi::Nexi::Webhook::Parser.new.parse(JSON.generate(payload)) }
+      .to raise_error(SolidusNexi::Nexi::ValidationError, /optional webhook field/)
+  end
+
+  it "rejects an unbounded order reference" do
+    payload = JSON.parse(fixture("nexi/webhooks/charge_created.json"))
+    payload.fetch("data").fetch("order")["reference"] = "x" * 129
+
+    expect { SolidusNexi::Nexi::Webhook::Parser.new.parse(JSON.generate(payload)) }
+      .to raise_error(SolidusNexi::Nexi::ValidationError, /optional webhook field/)
+  end
+
   def fixture(path)
-    File.read(Rails.root.join("..", "fixtures", path))
+    Rails.root.join("..", "fixtures", path).read
   end
 end

@@ -45,4 +45,79 @@ RSpec.describe SolidusNexi::Refund, type: :model do
     expect { service.call }.to raise_error(SolidusNexi::Nexi::ValidationError, /partial refund/)
     expect(SolidusNexi::Operation.where(payment:)).to be_empty
   end
+
+  it "retrieves and persists a missing charge ID before refunding" do
+    source.update!(provider_charge_id: nil)
+    refund = create(:refund, payment:, amount: 100)
+    body = JSON.parse(Rails.root.join("../fixtures/nexi/payments/charged.json").read)
+    body.fetch("payment").fetch("orderDetails")["reference"] = order.number
+    client = instance_double(SolidusNexi::Nexi::Client)
+    expect(client).to receive(:retrieve_payment).and_return(
+      SolidusNexi::Nexi::Result.new(body:, http_status: 200, provider_request_id: "retrieve-1")
+    )
+    expect(client).to receive(:refund).with(hash_including(charge_id: "050491ace345418d8ca70605a0c9df96"))
+      .and_return(SolidusNexi::Nexi::Result.new(
+        body: {"refundId" => "07958a7595bb4584a79d00680fd31e15"},
+        http_status: 201,
+        provider_request_id: "refund-1"
+      ))
+    SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+
+    result = described_class.new(payment:, refund:, amount_minor: 10_000).call
+
+    expect(result.authorization).to eq("07958a7595bb4584a79d00680fd31e15")
+    expect(source.reload.provider_charge_id).to eq("050491ace345418d8ca70605a0c9df96")
+  end
+
+  it "does not guess when the provider has no charge to refund" do
+    source.update!(provider_charge_id: nil)
+    refund = create(:refund, payment:, amount: 100)
+    body = JSON.parse(Rails.root.join("../fixtures/nexi/payments/reserved.json").read)
+    body.fetch("payment").fetch("orderDetails")["reference"] = order.number
+    client = instance_double(SolidusNexi::Nexi::Client)
+    allow(client).to receive(:retrieve_payment).and_return(
+      SolidusNexi::Nexi::Result.new(body:, http_status: 200, provider_request_id: "retrieve-1")
+    )
+    SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+
+    expect { described_class.new(payment:, refund:, amount_minor: 10_000).call }
+      .to raise_error(SolidusNexi::Nexi::ReconciliationRequired, /no charge/)
+    expect(SolidusNexi::Operation.where(payment:)).to be_empty
+  end
+
+  it "makes a malformed refund response safely retriable with the same operation" do
+    refund = create(:refund, payment:, amount: 100)
+    client = instance_double(SolidusNexi::Nexi::Client)
+    allow(client).to receive(:refund).and_return(
+      SolidusNexi::Nexi::Result.new(
+        body: {"refundId" => "invalid/id"},
+        http_status: 201,
+        provider_request_id: "refund-malformed"
+      )
+    )
+    SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+
+    expect { described_class.new(payment:, refund:, amount_minor: 10_000).call }
+      .to raise_error(SolidusNexi::Nexi::ReconciliationRequired)
+    expect(SolidusNexi::Operation.find_by!(payment:, kind: "refund"))
+      .to have_attributes(status: "unknown", reconciliation_required: true)
+  end
+
+  it "marks provider success with failed local persistence for reconciliation" do
+    refund = create(:refund, payment:, amount: 100)
+    client = instance_double(SolidusNexi::Nexi::Client)
+    allow(client).to receive(:refund).and_return(
+      SolidusNexi::Nexi::Result.new(
+        body: {"refundId" => "07958a7595bb4584a79d00680fd31e15"},
+        http_status: 201,
+        provider_request_id: "request-refund"
+      )
+    )
+    SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+    allow(source).to receive(:update!).and_raise(ActiveRecord::StatementInvalid, "database unavailable")
+
+    expect { described_class.new(payment:, refund:, amount_minor: 10_000).call }
+      .to raise_error(SolidusNexi::Nexi::ReconciliationRequired)
+    expect(SolidusNexi::Operation.find_by!(payment:, kind: "refund").status).to eq("unknown")
+  end
 end

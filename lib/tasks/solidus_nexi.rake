@@ -11,7 +11,10 @@ namespace :solidus_nexi do
         .where("dispatched_at < ? OR reconciliation_required = ?", 5.minutes.ago, true)
         .select(:payment_id)
       source_ids = Spree::Payment.where(id: payment_ids, source_type: "SolidusNexi::PaymentSource").select(:source_id)
-      SolidusNexi::PaymentSource.where(id: source_ids).where.not(provider_payment_id: nil)
+      SolidusNexi::PaymentSource
+        .where(id: source_ids)
+        .or(SolidusNexi::PaymentSource.requiring_reconciliation)
+        .where.not(provider_payment_id: nil)
     end
 
     sources.find_each do |source|

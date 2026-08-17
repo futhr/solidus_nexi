@@ -2,3 +2,10 @@
 set -euo pipefail
 ruby -S bundle config set --local path .bundle
 ruby -S bundle install
+
+if [[ ! -f .env ]]; then
+  cp .env.example .env
+  echo "Created .env from .env.example; replace the Nexi placeholders before testing checkout."
+fi
+
+echo "Run bin/check-env after editing .env."

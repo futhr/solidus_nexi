@@ -36,7 +36,7 @@ module SolidusNexi
         order: OrderSerializer.new(@order).call(amount_minor:),
         checkout: checkout,
         notifications: {webHooks: webhooks},
-        myReference: @payment.number.to_s.slice(0, 36)
+        myReference: @payment.number.to_s.slice(0, 128)
       }
     end
 

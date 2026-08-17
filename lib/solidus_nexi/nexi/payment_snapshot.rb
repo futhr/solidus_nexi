@@ -3,7 +3,7 @@
 module SolidusNexi
   module Nexi
     class PaymentSnapshot
-      attr_reader :payment_id, :summary, :amount_minor, :currency, :order_reference,
+      attr_reader :payment_id, :summary, :amount_minor, :currency, :order_reference, :my_reference,
         :charge_id, :refund_id, :refunds
 
       def initialize(body, expected_payment_id: nil)
@@ -23,7 +23,8 @@ module SolidusNexi
 
         @amount_minor = positive_integer(order, "amount")
         @currency = Money.validate_currency!(order.fetch("currency"))
-        @order_reference = order["reference"]&.to_s
+        @order_reference = bounded_optional_string(order["reference"], "reference")
+        @my_reference = bounded_optional_string(payment["myReference"], "myReference")
         @charge_id = latest_identifier(payment["charges"], "chargeId")
         @refunds = Array(payment["refunds"]).select { |refund| refund.is_a?(Hash) }
         @refund_id = latest_identifier(@refunds, "refundId")
@@ -75,6 +76,17 @@ module SolidusNexi
         value
       rescue ArgumentError, TypeError
         raise MalformedResponseError, "Nexi payment response contains an invalid #{key}"
+      end
+
+      def bounded_optional_string(value, key)
+        return if value.nil? || value.to_s.empty?
+
+        string = value.to_s
+        if string.bytesize > 128 || string.include?("\0")
+          raise MalformedResponseError, "Nexi payment response contains an invalid #{key}"
+        end
+
+        string
       end
     end
   end

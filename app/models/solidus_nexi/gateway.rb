@@ -61,7 +61,10 @@ module SolidusNexi
       response = client_for(payment).retrieve_payment(payment_id: source.provider_payment_id)
       snapshot = Nexi::PaymentSnapshot.new(response.body, expected_payment_id: source.provider_payment_id)
       amounts = snapshot.amounts
-      if snapshot.amount_minor == amount_minor && amounts.fetch(required_amount) >= amount_minor
+      provider_matches = snapshot.amount_minor == amount_minor &&
+        snapshot.currency == payment.currency &&
+        snapshot.order_reference == OrderSerializer.order_reference(payment.order.number)
+      if payment.source == source && provider_matches && amounts.fetch(required_amount) >= amount_minor
         success("Nexi payment verified", source.provider_payment_id)
       else
         failure(Nexi::ReconciliationRequired.new("Nexi payment is not financially complete"))

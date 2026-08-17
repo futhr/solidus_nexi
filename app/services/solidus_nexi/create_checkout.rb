@@ -21,7 +21,33 @@ module SolidusNexi
       return prepared if prepared.is_a?(Result)
 
       payment, source, payload, operation = prepared
+      complete_checkout(payment, source, payload, operation)
+    rescue Nexi::TimeoutUnknownOutcome => error
+      operation&.mark_unknown!(error)
+      enqueue_reconciliation(source)
+      raise Nexi::ReconciliationRequired, "Nexi checkout creation has an unknown outcome"
+    rescue Nexi::MalformedResponseError => error
+      operation&.mark_unknown!(error)
+      enqueue_reconciliation(source)
+      raise Nexi::ReconciliationRequired, "Nexi checkout creation has an unknown outcome"
+    rescue Nexi::Error => error
+      unless error.is_a?(Nexi::OperationInProgress) || error.is_a?(Nexi::ReconciliationRequired)
+        operation&.mark_rejected!(error) if operation&.status == "dispatched"
+        payment&.invalidate! if payment&.can_invalidate?
+      end
+      raise
+    rescue ActiveRecord::ActiveRecordError => error
+      if dispatched_after_rollback?(operation)
+        operation.mark_unknown!(error)
+        enqueue_reconciliation(source)
+        raise Nexi::ReconciliationRequired, "Nexi succeeded but local persistence must be reconciled"
+      end
+      raise
+    end
 
+    private
+
+    def complete_checkout(payment, source, payload, operation)
       response = client.create_payment(payload:)
       provider_payment_id = response_identifier!(response, "paymentId")
       hosted_url = validate_hosted_url!(response["hostedPaymentPageUrl"])
@@ -44,30 +70,7 @@ module SolidusNexi
         hosted_payment_page_url: hosted_url,
         reused: false
       )
-    rescue Nexi::TimeoutUnknownOutcome => error
-      operation&.mark_unknown!(error)
-      enqueue_reconciliation(source)
-      raise Nexi::ReconciliationRequired, "Nexi checkout creation has an unknown outcome"
-    rescue Nexi::MalformedResponseError => error
-      operation&.mark_unknown!(error)
-      enqueue_reconciliation(source)
-      raise Nexi::ReconciliationRequired, "Nexi checkout creation has an unknown outcome"
-    rescue Nexi::Error => error
-      unless error.is_a?(Nexi::OperationInProgress) || error.is_a?(Nexi::ReconciliationRequired)
-        operation&.mark_rejected!(error) if operation&.status == "dispatched"
-        payment&.invalidate! if payment&.can_invalidate?
-      end
-      raise
-    rescue ActiveRecord::ActiveRecordError => error
-      if operation&.status == "dispatched"
-        operation.mark_unknown!(error)
-        enqueue_reconciliation(source)
-        raise Nexi::ReconciliationRequired, "Nexi succeeded but local persistence must be reconciled"
-      end
-      raise
     end
-
-    private
 
     def prepare_local_operation
       @order.with_lock do
@@ -195,6 +198,10 @@ module SolidusNexi
 
     def enqueue_reconciliation(source)
       ReconcilePaymentJob.perform_later(source.id) if source&.persisted? && source.provider_payment_id.present?
+    end
+
+    def dispatched_after_rollback?(operation)
+      operation&.persisted? && operation.reload.status == "dispatched"
     end
   end
 end

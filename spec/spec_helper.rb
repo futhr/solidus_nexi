@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../dev/load_env"
+
 ENV["RAILS_ENV"] = "test"
 ENV["SOLIDUS_PREFERENCES_MASTER_KEY"] ||= "0123456789abcdef0123456789abcdef"
 
@@ -11,9 +13,14 @@ if ENV["CI"]
   SimpleCov.formatter = SimpleCov::Formatter::LcovFormatter
 end
 SimpleCov.start("rails") do
-  add_filter %r{^/lib/generators/.*/install/install_generator.rb}
-  add_filter %r{^/lib/.*/factories.rb}
-  add_filter %r{^/lib/.*/version.rb}
+  enable_coverage :branch
+  if ENV["CI"]
+    minimum_coverage line: 94, branch: 72
+    minimum_coverage_by_file 80
+  end
+  add_filter %r{/lib/generators/.*/install/}
+  add_filter %r{/lib/.*/factories.rb}
+  add_filter %r{/lib/.*/version.rb}
 end
 
 dummy_environment = "#{__dir__}/dummy/config/environment.rb"
@@ -28,6 +35,10 @@ Dir["#{__dir__}/support/**/*.rb"].sort.each { |file| require file }
 SolidusDevSupport::TestingSupport::Factories.load_for(SolidusNexi::Engine)
 
 RSpec.configure do |config|
+  unless ENV["NEXI_TEST_ENVIRONMENT"] == "1"
+    config.filter_run_excluding nexi_test_environment: true
+  end
+
   config.infer_spec_type_from_file_location!
   config.use_transactional_fixtures = true
   config.include ActiveJob::TestHelper
@@ -35,5 +46,20 @@ RSpec.configure do |config|
   config.before do
     ActiveJob::Base.queue_adapter = :test
     SolidusNexi.reset_configuration!
+  end
+
+  config.before(:each, :nexi_test_environment) do
+    unless ENV["NEXI_CHECKOUT_ENVIRONMENT"] == "test"
+      raise "Provider specs are restricted to NEXI_CHECKOUT_ENVIRONMENT=test"
+    end
+    if ENV["NEXI_CHECKOUT_API_KEY"].blank?
+      raise "NEXI_CHECKOUT_API_KEY is required for provider specs"
+    end
+
+    WebMock.allow_net_connect!
+  end
+
+  config.after(:each, :nexi_test_environment) do
+    WebMock.disable_net_connect!(allow_localhost: true)
   end
 end

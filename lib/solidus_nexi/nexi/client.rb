@@ -35,15 +35,6 @@ module SolidusNexi
         request(:get, "/v1/payments/#{identifier!(payment_id, "payment_id")}", operation: :retrieve_payment)
       end
 
-      def terminate(payment_id:)
-        request(
-          :put,
-          "/v1/payments/#{identifier!(payment_id, "payment_id")}/terminate",
-          mutation: true,
-          operation: :terminate_payment
-        )
-      end
-
       def charge(payment_id:, amount_minor:, idempotency_key:)
         amount = Money.validate_minor!(amount_minor)
         request(
@@ -79,14 +70,6 @@ module SolidusNexi
         )
       end
 
-      def retrieve_charge(charge_id:)
-        request(:get, "/v1/charges/#{identifier!(charge_id, "charge_id")}", operation: :retrieve_charge)
-      end
-
-      def retrieve_refund(refund_id:)
-        request(:get, "/v1/refunds/#{identifier!(refund_id, "refund_id")}", operation: :retrieve_refund)
-      end
-
       def inspect
         "#<#{self.class.name} environment=#{@environment.inspect}>"
       end
@@ -102,7 +85,7 @@ module SolidusNexi
           body: payload && JSON.generate(payload)
         )
         provider_request_id = provider_request_id(response.headers)
-        parsed_body = parse_body(response.body, response.status, provider_request_id)
+        parsed_body = parsed_response(response, provider_request_id)
         raise_for_status!(response.status, parsed_body, response.headers, provider_request_id, mutation:)
         log(operation:, result: "success", provider_request_id:, started_at:)
         Result.new(body: parsed_body, http_status: response.status, provider_request_id:)
@@ -115,6 +98,14 @@ module SolidusNexi
       rescue Error => error
         log(operation:, result: error.class.name, provider_request_id: error.provider_request_id, started_at:)
         raise
+      end
+
+      def parsed_response(response, request_id)
+        if response.status.between?(200, 299)
+          parse_body(response.body, response.status, request_id)
+        else
+          parse_error_body(response.body)
+        end
       end
 
       def headers(idempotency_key)
@@ -140,6 +131,15 @@ module SolidusNexi
         parsed
       rescue JSON::ParserError
         raise MalformedResponseError.new("Nexi response was not valid JSON", provider_request_id: request_id, http_status: status)
+      end
+
+      def parse_error_body(body)
+        return {} if body.empty?
+
+        parsed = JSON.parse(body)
+        parsed.is_a?(Hash) ? parsed : {}
+      rescue JSON::ParserError
+        {}
       end
 
       def raise_for_status!(status, body, response_headers, request_id, mutation:)
@@ -197,7 +197,7 @@ module SolidusNexi
 
       def validate_idempotency_key!(value)
         key = value.to_s
-        raise ValidationError, "idempotency key must be between 1 and 63 characters" unless key.length.between?(1, 63)
+        raise ValidationError, "idempotency key must be between 1 and 64 characters" unless key.length.between?(1, 64)
 
         key
       end

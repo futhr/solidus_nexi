@@ -4,6 +4,16 @@ module SolidusNexi
   class OrderSerializer
     UNSUPPORTED_CHARACTERS = /[<>'"&\\]/
 
+    def self.order_reference(value)
+      sanitize(value, fallback: "solidus-order")
+    end
+
+    def self.sanitize(value, fallback:)
+      cleaned = value.to_s.gsub(UNSUPPORTED_CHARACTERS, "-").strip
+      cleaned = fallback if cleaned.empty?
+      cleaned.slice(0, 128)
+    end
+
     def initialize(order)
       @order = order
       @currency = Nexi::Money.validate_currency!(order.currency)
@@ -22,7 +32,7 @@ module SolidusNexi
         items:,
         amount: expected_amount,
         currency: @currency,
-        reference: clean(@order.number, fallback: "solidus-order")
+        reference: self.class.order_reference(@order.number)
       }
     end
 
@@ -108,9 +118,7 @@ module SolidusNexi
     end
 
     def clean(value, fallback:)
-      cleaned = value.to_s.gsub(UNSUPPORTED_CHARACTERS, "-").strip
-      cleaned = fallback if cleaned.empty?
-      cleaned.slice(0, 128)
+      self.class.sanitize(value, fallback:)
     end
   end
 end

@@ -10,7 +10,7 @@ This is a maintainer runbook. Publishing changes external state, so every step t
 2. Confirm that the GitHub repository has been renamed to `futhr/solidus_nexi` and that gemspec metadata resolves there.
 3. Require MFA on the RubyGems account and keep `rubygems_mfa_required = true` in the gemspec metadata.
 4. Activate `futhr/solidus_nexi` in Codecov and verify the OIDC-authenticated coverage report from `main`.
-5. Complete the real Nexi merchant test lifecycle described in [Operations](operations.md).
+5. Complete and record the real Nexi merchant test lifecycle described in [Testing](testing.md).
 6. Decide whether the first publication remains `0.1.0.alpha.1` or advances to another prerelease version.
 
 Do not publish the package while the public repository URL, security contact, license, or provider test evidence is unresolved.
@@ -23,12 +23,17 @@ Run the supported checks:
 
 ```sh
 bin/setup
+bin/check-env
 bin/rake extension:test_app
-bin/rake
+CI=1 bin/rake
+NEXI_TEST_ENVIRONMENT=1 bundle exec rspec spec/provider
 bundle exec rubocop
+bundle exec bundler-audit check --update --ignore CVE-2026-47736 CVE-2026-47737
 (cd spec/dummy && bin/rails zeitwerk:check)
 gem build solidus_nexi.gemspec
 ```
+
+The two ignored Puma advisories apply to the development server pulled in by `solidus_dev_support`; Puma is not a runtime dependency of the packaged engine. Remove the exceptions as soon as that helper accepts a patched Puma release.
 
 Inspect the built package before publishing:
 

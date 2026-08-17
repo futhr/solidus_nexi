@@ -55,7 +55,7 @@ Enqueue a known payment source by local source ID:
 bin/rails 'solidus_nexi:reconcile[42]'
 ```
 
-Enqueue all sources whose known operations are stale or require reconciliation:
+Enqueue all sources whose provider state or known operations are stale or require reconciliation:
 
 ```sh
 bin/rails solidus_nexi:reconcile
@@ -90,6 +90,7 @@ Let the job's bounded retry policy honor the provider delay. Avoid repeatedly ru
 ## Routine checks
 
 - Review operations where `reconciliation_required` is true.
+- Review payment sources where `reconciliation_required` is true; this includes unexpected partial provider state and conflicts with a terminal local payment.
 - Review failed webhook receipts and confirm the job backend is healthy.
 - Watch sources whose `last_reconciled_at` is unexpectedly old during an active payment.
 - Confirm that logs contain identifiers and result classes, not credentials or provider bodies.
