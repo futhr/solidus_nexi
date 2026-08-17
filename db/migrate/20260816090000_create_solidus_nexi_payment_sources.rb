@@ -3,7 +3,10 @@
 class CreateSolidusNexiPaymentSources < ActiveRecord::Migration[7.0]
   def change
     create_table :solidus_nexi_payment_sources do |table|
-      table.references :payment_method, null: false, foreign_key: {to_table: :spree_payment_methods}
+      table.references :payment_method,
+        type: :integer,
+        null: false,
+        foreign_key: {to_table: :spree_payment_methods}
       table.string :provider_payment_id
       table.string :provider_charge_id
       table.string :provider_status

@@ -3,7 +3,10 @@
 class CreateSolidusNexiWebhookReceipts < ActiveRecord::Migration[7.0]
   def change
     create_table :solidus_nexi_webhook_receipts do |table|
-      table.references :payment_method, null: false, foreign_key: {to_table: :spree_payment_methods}
+      table.references :payment_method,
+        type: :integer,
+        null: false,
+        foreign_key: {to_table: :spree_payment_methods}
       table.string :event_id, null: false
       table.string :event_name, null: false
       table.string :provider_payment_id, null: false

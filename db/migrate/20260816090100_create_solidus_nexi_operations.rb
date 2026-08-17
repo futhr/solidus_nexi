@@ -3,7 +3,10 @@
 class CreateSolidusNexiOperations < ActiveRecord::Migration[7.0]
   def change
     create_table :solidus_nexi_operations do |table|
-      table.references :payment, null: false, foreign_key: {to_table: :spree_payments}
+      table.references :payment,
+        type: :integer,
+        null: false,
+        foreign_key: {to_table: :spree_payments}
       table.string :kind, null: false
       table.string :logical_reference, null: false
       table.integer :amount_minor, null: false

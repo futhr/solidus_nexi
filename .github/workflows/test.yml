@@ -102,6 +102,43 @@ jobs:
       - name: Run test suite
         run: bundle exec rake
 
+  mysql:
+    name: MySQL 8.4
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: mysql
+          MYSQL_DATABASE: solidus_nexi_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping --host=127.0.0.1 --user=root --password=mysql"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB: mysql
+      DB_HOST: 127.0.0.1
+      DB_USERNAME: root
+      DB_PASSWORD: mysql
+      SOLIDUS_BRANCH: v4.7
+      RAILS_VERSION: "7.2"
+      SOLIDUS_PREFERENCES_MASTER_KEY: 0123456789abcdef0123456789abcdef
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+      - name: Build MySQL test application
+        run: bundle exec rake extension:test_app
+      - name: Run test suite
+        run: bundle exec rake
+
   lint:
     name: Ruby style
     runs-on: ubuntu-24.04

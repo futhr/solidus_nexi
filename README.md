@@ -15,7 +15,7 @@ The gem is currently an alpha prerelease. Complete a merchant-specific Nexi test
 
 ## Compatibility and scope
 
-The primary target is Solidus 4.7. Solidus 4.6 remains a secondary target while it can be supported without compromising the integration. Ruby 3.2 and newer and the maintained Rails 7.2 line are supported; CI covers Ruby 3.2 through 4.0 on the primary target.
+The primary target is Solidus 4.7. Solidus 4.6 remains a secondary target while it can be supported without compromising the integration. Ruby 3.2 and newer and the maintained Rails 7.2 line are supported; CI covers Ruby 3.2 through 4.0 on the primary target and runs the full suite on SQLite, PostgreSQL 16, and MySQL 8.4.
 
 The initial release supports:
 

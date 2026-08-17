@@ -16,6 +16,8 @@ bundle exec rubocop
 
 Normal specs block external HTTP. Provider responses under `spec/fixtures/nexi` cover API errors, financial states, malformed responses, duplicate webhooks, unknown outcomes, and idempotent reconciliation. System specs render the shipped Solidus storefront partial, exercise the hosted redirect handoff, and render provider state in the real Solidus admin payment page.
 
+CI runs the primary Solidus target against SQLite, PostgreSQL 16, and MySQL 8.4. The database jobs build a fresh host application and run every extension migration before executing the complete suite.
+
 ## Merchant API contract
 
 Run this only with test credentials:
