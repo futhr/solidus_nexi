@@ -16,7 +16,7 @@ module SolidusNexi
       true
     end
 
-    def self.validate!(environment: ENV)
+    def self.validate!(environment: ENV, public_urls: true)
       errors = []
       validate_master_key(environment, errors)
       validate_present(environment, errors, "NEXI_CHECKOUT_API_KEY")
@@ -24,9 +24,15 @@ module SolidusNexi
       validate_webhook_secret(environment, errors, "NEXI_CHECKOUT_PREVIOUS_WEBHOOK_SECRET", required: false)
       validate_inclusion(environment, errors, "NEXI_CHECKOUT_ENVIRONMENT", %w[test live])
       validate_country(environment, errors)
-      validate_https_url(environment, errors, "NEXI_CHECKOUT_TERMS_URL", required: true)
-      validate_https_url(environment, errors, "NEXI_CHECKOUT_MERCHANT_TERMS_URL", required: false)
-      validate_public_origin(environment, errors)
+      validate_https_url(environment, errors, "NEXI_CHECKOUT_TERMS_URL", required: true, public: public_urls)
+      validate_https_url(
+        environment,
+        errors,
+        "NEXI_CHECKOUT_MERCHANT_TERMS_URL",
+        required: false,
+        public: public_urls
+      )
+      validate_public_origin(environment, errors, public: public_urls)
       raise ArgumentError, errors.join("\n") if errors.any?
 
       true
@@ -63,22 +69,47 @@ module SolidusNexi
         /\A[A-Z]{3}\z/.match?(environment["NEXI_CHECKOUT_COUNTRY"].to_s)
     end
 
-    def self.validate_https_url(environment, errors, name, required:)
+    def self.validate_https_url(environment, errors, name, required:, public:)
       value = environment[name].to_s
       return if value.empty? && !required
 
-      valid = PublicUrl.valid_https?(value, maximum_length: 256)
-      errors << "#{name} must be a public HTTPS URL of at most 256 characters" unless valid
+      valid = valid_https?(value, public:)
+      qualifier = public ? "public " : ""
+      errors << "#{name} must be a #{qualifier}HTTPS URL of at most 256 characters" unless valid
     end
 
-    def self.validate_public_origin(environment, errors)
+    def self.validate_public_origin(environment, errors, public:)
       value = environment["NEXI_CHECKOUT_PUBLIC_BASE_URL"].to_s
-      valid = PublicUrl.valid_https?(value, origin: true, maximum_length: 256)
-      errors << "NEXI_CHECKOUT_PUBLIC_BASE_URL must be a public HTTPS origin without a path" unless valid
+      valid = valid_https?(value, origin: true, public:)
+      qualifier = public ? "public " : ""
+      errors << "NEXI_CHECKOUT_PUBLIC_BASE_URL must be a #{qualifier}HTTPS origin without a path" unless valid
+    end
+
+    def self.valid_https?(value, public:, origin: false)
+      return PublicUrl.valid_https?(value, origin:, maximum_length: 256) if public
+
+      valid_sandbox_https?(value, origin:)
+    end
+
+    def self.valid_sandbox_https?(value, origin:)
+      string = value.to_s
+      return false if string.empty? || string.length > 256
+
+      uri = URI.parse(string)
+      return false unless uri.is_a?(URI::HTTPS) && uri.host && uri.userinfo.nil?
+
+      !origin || origin?(uri)
+    rescue URI::InvalidURIError
+      false
+    end
+
+    def self.origin?(uri)
+      ["", "/"].include?(uri.path) && uri.query.nil? && uri.fragment.nil?
     end
 
     private_class_method :local?, :validate_master_key, :validate_present, :validate_webhook_secret,
-      :validate_inclusion, :validate_country, :validate_https_url, :validate_public_origin
+      :validate_inclusion, :validate_country, :validate_https_url, :validate_public_origin, :valid_https?,
+      :valid_sandbox_https?, :origin?
   end
 end
 

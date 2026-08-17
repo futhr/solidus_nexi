@@ -50,9 +50,6 @@ RSpec.describe "Nexi merchant test environment", :nexi_test_environment do
 
   def provider_payload
     base_url = ENV.fetch("NEXI_CHECKOUT_PUBLIC_BASE_URL").delete_suffix("/")
-    unless SolidusNexi::PublicUrl.valid_https?(base_url, origin: true)
-      raise "NEXI_CHECKOUT_PUBLIC_BASE_URL must be a public HTTPS origin for provider specs"
-    end
 
     SolidusNexi::CheckoutPayload.new(
       order:,

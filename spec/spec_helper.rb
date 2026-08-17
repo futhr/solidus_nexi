@@ -53,7 +53,7 @@ RSpec.configure do |config|
     unless ENV["NEXI_CHECKOUT_ENVIRONMENT"] == "test"
       raise "Provider specs are restricted to NEXI_CHECKOUT_ENVIRONMENT=test"
     end
-    SolidusNexi::DevelopmentEnvironment.validate!
+    SolidusNexi::DevelopmentEnvironment.validate!(public_urls: false)
 
     WebMock.allow_net_connect!
   end

@@ -12,7 +12,7 @@ CI=1 bin/rake
 bundle exec rubocop
 ```
 
-`bin/check-env` prints variable names only. It requires a 32-byte `SOLIDUS_PREFERENCES_MASTER_KEY`, Test Secret API key, alphanumeric webhook secrets, supported environment/country values, public HTTPS terms pages, and a pathless public HTTPS application origin. Reserved placeholder hosts and non-public IP literals fail validation. Leave `NEXI_CHECKOUT_PREVIOUS_WEBHOOK_SECRET` empty unless a secret rotation is in progress.
+`bin/check-env` is the readiness check for a complete hosted checkout, not a prerequisite for the isolated provider contract. It prints variable names only. It requires a 32-byte `SOLIDUS_PREFERENCES_MASTER_KEY`, Test Secret API key, alphanumeric webhook secrets, supported environment/country values, public HTTPS terms pages, and a pathless public HTTPS application origin. Reserved placeholder hosts and non-public IP literals fail validation. Leave `NEXI_CHECKOUT_PREVIOUS_WEBHOOK_SECRET` empty unless a secret rotation is in progress.
 
 Normal specs block external HTTP. Provider responses under `spec/fixtures/nexi` cover API errors, financial states, asynchronous refund acceptance/completion/failure, malformed responses, duplicate webhooks, unknown outcomes, and idempotent reconciliation. System specs render the shipped Solidus storefront partial, exercise the hosted redirect handoff, and render provider state in the real Solidus admin payment page.
 
@@ -27,6 +27,8 @@ NEXI_TEST_ENVIRONMENT=1 bundle exec rspec spec/provider
 ```
 
 The provider specs refuse any `NEXI_CHECKOUT_ENVIRONMENT` other than `test`. They verify the merchant key with a read-only request, build a 100 SEK checkout through the same Solidus order serializer and webhook payload used at runtime, create it in Nexi, and retrieve it through the Payment API. The checkout is not completed or charged. It remains visible in the TEST portal until Nexi expires it.
+
+Reserved `.example` HTTPS URLs are accepted for this contract because the test never opens the hosted page and Nexi is not expected to call its return, cancel, or webhook URLs. Use real public endpoints for the hosted payment release gate below.
 
 These specs are excluded from ordinary CI. Do not put merchant credentials in GitHub repository secrets merely to make pull-request checks call Nexi.
 

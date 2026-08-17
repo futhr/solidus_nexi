@@ -40,6 +40,25 @@ RSpec.describe SolidusNexi::DevelopmentEnvironment do
     expect(described_class.validate!(environment: valid_environment)).to be(true)
   end
 
+  it "accepts reserved HTTPS hosts only for the isolated provider contract" do
+    sandbox = valid_environment.merge(
+      "NEXI_CHECKOUT_TERMS_URL" => "https://shop.example/terms",
+      "NEXI_CHECKOUT_MERCHANT_TERMS_URL" => "https://shop.example/privacy",
+      "NEXI_CHECKOUT_PUBLIC_BASE_URL" => "https://shop.example"
+    )
+
+    expect(described_class.validate!(environment: sandbox, public_urls: false)).to be(true)
+    expect { described_class.validate!(environment: sandbox) }
+      .to raise_error(ArgumentError, /public HTTPS/)
+
+    expect do
+      described_class.validate!(
+        environment: sandbox.merge("NEXI_CHECKOUT_PUBLIC_BASE_URL" => "https://shop.example/store"),
+        public_urls: false
+      )
+    end.to raise_error(ArgumentError, /HTTPS origin without a path/)
+  end
+
   it "reports every unsafe or missing local setting without printing values" do
     environment = valid_environment.merge(
       "SOLIDUS_PREFERENCES_MASTER_KEY" => "too-long" * 8,
