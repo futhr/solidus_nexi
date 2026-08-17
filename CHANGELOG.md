@@ -1,107 +1,61 @@
 # Changelog
 
-This file records user-visible changes in reverse chronological order. The current `solidus_nexi` history is tied to the Conventional Commit operations that produced each release so a maintainer can move from a release note to the exact change.
-
-The legacy repository did not retain release tags for its original `2.0.3` and `2.1.0` versions. Those entries are reconstructed from the versions declared in the gemspec and version file. The `v2.1.0` tag was added on 2026-08-16 to preserve the final legacy tree before the rewrite.
+Notable user-facing changes are recorded here. The current `solidus_nexi` rewrite has not been tagged or published.
 
 ## Unreleased
 
-### Fixed
-
-- Reconcile webhooks against the exact Nexi payment instead of the newest checkout, and use Nexi `myReference` for unambiguous recovery when the local provider ID was not persisted.
-- Keep unexpected partial provider state and terminal local-state conflicts visible until an operator resolves them.
-- Return rate-limited mutations to a safe retryable state without changing their persisted idempotency key.
-- Classify empty or non-JSON provider errors by HTTP status and bound streamed HTTP responses before buffering them.
-- Reload durable operations after a database rollback so provider-success/local-failure races are always marked for reconciliation.
-- Treat refund creation as asynchronous acceptance, reconcile completion by exact provider refund ID, and restore Solidus refundable value when Nexi reports a final refund failure.
-- Preserve returned checkout identities before local validation and safely abandon only identity-less creates after Nexi's checkout lifetime.
-- Match extension foreign-key widths to Solidus on MySQL and exercise MySQL 8.4 in CI.
-
-### Changed
-
-- Require the patched Rails 7.2 line, add Rails-aware linting and complexity budgets, and run RubySec dependency checks in CI.
-- Load a gitignored repository `.env` only for development and test, create it from `.env.example` during first-time setup, and document the free Nexi test-account lifecycle required before production.
-- Add Solidus-style storefront and admin system coverage, fault-injection tests, an opt-in merchant TEST API contract, and a strict environment checker.
-
-## 0.1.0.alpha.1 — 2026-08-16
-
-This is the first tagged source prerelease under the renamed `solidus_nexi` gem and `SolidusNexi` namespace. It has not yet been published to RubyGems. This is a replacement for `spree_dibs`, not an API-compatible update.
-
 ### Added
 
-- Added a framework-light client for the current Nexi Checkout Payment API, including typed failures, strict timeouts, minor-unit money handling, response bounds, and safe structured logging.
-- Added hosted checkout creation with exact order serialization and trusted Nexi redirect validation.
-- Added durable payment-source, operation, and webhook-receipt records with database uniqueness constraints.
-- Added full capture, full cancellation, and full refund through Solidus payment seams.
-- Added authenticated, deduplicated webhook processing and provider-retrieval reconciliation.
-- Added explicit unknown-outcome handling, manual reconciliation tasks, admin status visibility, and webhook-secret rotation.
-- Added sanitized provider fixtures and compatibility coverage for Solidus 4.7 and 4.6.
+- A Solidus-native integration for the current Nexi Checkout Payment API.
+- Hosted checkout creation with exact order serialization and validated redirect URLs.
+- Full capture, cancellation, and refund support through Solidus payment APIs.
+- Authenticated, deduplicated webhooks and provider-backed reconciliation.
+- Durable operation records for idempotency and unknown network outcomes.
+- Admin payment status, manual reconciliation tasks, and webhook-secret rotation.
+- SQLite, PostgreSQL, and MySQL coverage across the supported Solidus and Ruby matrix.
+- An opt-in merchant TEST API contract and a documented hosted-card release gate.
 
 ### Changed
 
-- Renamed the repository and gem identity to `solidus_nexi`, and the Ruby namespace to `SolidusNexi`.
-- Replaced process-global ActiveMerchant behavior with per-payment-method Nexi test/live clients.
-- Moved card-data collection entirely to Nexi's hosted checkout.
-- Hardened release CI with exact Rails-series checks, eager-load and package inspection, immutable action pins, and Codecov LCOV uploads.
-- Aligned repository metadata and badges with the renamed GitHub remote while preserving legacy copyright attribution separately.
+- Replaced the historical `spree_dibs` extension with the `solidus_nexi` gem and `SolidusNexi` namespace.
+- Moved payment-detail collection entirely to Nexi's hosted checkout.
+- Limited financial mutations to full amounts until exact partial item allocation can be guaranteed.
+- Required the maintained Rails 7.2 line and patched Rails releases.
 
-### Removed
+### Fixed
 
-- Removed `Spree::Gateway::Dibs`, the legacy ActiveMerchant fork dependency, card-year mutation, SSL workaround, and DIBS frontend assets.
-- Removed support for partial capture and partial refund until an exact Solidus-to-Nexi order-item allocation can be proven.
-- Removed compatibility aliases for the historical gateway and payment sources.
+- Recover checkout creation when the provider accepted the request but the local response was lost.
+- Reconcile asynchronous refund completion and failure by exact provider refund ID.
+- Requeue failed or abandoned webhook work without duplicating active or terminal receipts.
+- Preserve idempotency keys across retries and flag provider-success/local-failure races for reconciliation.
+- Prevent late webhooks from regressing terminal payment state or applying to the wrong checkout.
+- Reject invalid tax allocations, unsupported money values, and unsafe public URLs before provider dispatch.
+- Match Solidus foreign-key widths on MySQL.
 
 ### Security
 
-- Store API and webhook credentials as encrypted Solidus preferences.
-- Compare current and previous webhook Authorization secrets safely without persisting the callback body.
-- Reject unauthenticated callbacks before database mutation and acknowledge valid callbacks with HTTP 200 exactly.
-
-### Git operation log
-
-- `aaef6f4` — `feat!`: replace DIBS gateway with Solidus Nexi foundation.
-- `af53d51` — `feat`: implement hosted Nexi Checkout lifecycle.
-- `3bf4a7b` — `test`: cover Nexi payment reliability contracts.
-- `ae7de46` — `ci`: test supported Solidus and Ruby versions.
-- `e2724f0` — `docs`: document Nexi cutover and operations.
-- `c460fcf` — `docs`: align guides for the RubyGems release.
-- `cfe9ec3` — `docs`: finalize prerelease history and release policy.
-- `e936880` — `ci`: align checks with supported release matrix.
-- `8ceec4c` — `chore`: align project identity and badges.
+- Store provider credentials as encrypted Solidus preferences and require a 32-byte preferences master key.
+- Authenticate callbacks before persistence and accept one previous webhook secret during rotation.
+- Bound provider responses and logs without retaining request bodies, webhook bodies, or cardholder data.
+- Require RubyGems MFA metadata and restrict package publication to RubyGems.org.
 
 ## 2.1.0 — 2014-03-01
 
-This was the final `spree_dibs` line. The version was introduced by `f64a220`; later maintenance through `83c7775` remained on `2.1.0`. The final tree is preserved by the archive tag `v2.1.0`.
+Final historical `spree_dibs` source line. The archived tree is preserved by the `v2.1.0` tag and is unsupported.
 
 ### Changed
 
-- Updated the legacy gateway and development dependencies for Spree 2.2 and the then-current Spree master branch.
-- Reworked version handling around `Gem::Version` and explicit version components.
-- Refreshed the gemspec, test variables, Rails bin scripts, and project documentation.
-
-### Git operation log
-
-- `f64a220` — Update for Spree 2.2.0 and declare version 2.1.0.
-- `c8e42a3` — Move development to the Spree 2.3 beta line.
-- `3a2e0bf` through `83c7775` — Complete the final documentation, gemspec, test, and Rails bin maintenance.
+- Updated the legacy gateway for the Spree 2.2 development line.
+- Refreshed its version handling, dependencies, test app, and documentation.
 
 ## 2.0.3 — 2013-06-19
 
-This was the initial public repository version of `spree_dibs`. Its recorded development range runs from `0c26bcd` through `9cdf0f3`.
+Initial public `spree_dibs` extension for Spree 2.0.
 
 ### Added
 
-- Added the original ActiveMerchant-backed DIBS payment gateway for Spree 2.0.
-- Added authorize, capture, void, credit, and refund delegation to the DIBS gateway.
-- Added the original extension engine, payment-method registration, account configuration, and gateway specs.
-
-### Changed
-
-- Moved the version from the gemspec into `SpreeDibs::VERSION`.
-- Updated the legacy Spree development branches, test-app tooling, dependencies, README, and license presentation during the 2.0.x line.
+- The original ActiveMerchant-backed DIBS gateway and Spree payment integration.
 
 ### Historical limitations
 
-- Required an unmerged ActiveMerchant fork for DIBS support.
-- Required merchant credentials in the old test configuration.
-- Documented an SSLv3 workaround that must not be carried into modern deployments.
+- Relied on an unmerged ActiveMerchant fork and obsolete transport workarounds.

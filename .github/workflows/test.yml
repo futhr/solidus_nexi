@@ -3,6 +3,7 @@ name: Test
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -185,33 +186,12 @@ jobs:
       - name: Build gem
         run: gem build solidus_nexi.gemspec
       - name: Inspect gem contents
+        run: ruby dev/verify_package.rb solidus_nexi-*.gem
+      - name: Verify release tag matches the gem version
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
-          ruby -rrubygems/package <<'RUBY'
-          artifacts = Dir["solidus_nexi-*.gem"]
-          abort "Expected one gem artifact, found #{artifacts.length}" unless artifacts.one?
-
-          files = Gem::Package.new(artifacts.first).spec.files
-          required = %w[
-            lib/solidus_nexi.rb
-            config/routes.rb
-            db/migrate/20260816090000_create_solidus_nexi_payment_sources.rb
-            db/migrate/20260816090100_create_solidus_nexi_operations.rb
-            db/migrate/20260816090200_create_solidus_nexi_webhook_receipts.rb
-            db/migrate/20260817090000_add_reconciliation_required_to_solidus_nexi_payment_sources.rb
-            db/migrate/20260817100000_add_operation_ids_to_solidus_nexi_webhook_receipts.rb
-            README.md
-            CHANGELOG.md
-            SECURITY.md
-            docs/migration.md
-            docs/operations.md
-            docs/releasing.md
-            docs/testing.md
-          ]
-          missing = required - files
-          abort "Missing packaged files: #{missing.join(', ')}" unless missing.empty?
-
-          forbidden = files.select do |path|
-            path.start_with?("spec/") || path.include?("spree_dibs") || path.include?("gateway/dibs")
-          end
-          abort "Legacy or test files packaged: #{forbidden.join(', ')}" unless forbidden.empty?
-          RUBY
+          nexi_expected_tag="v$(ruby -Ilib -rsolidus_nexi/version -e 'print SolidusNexi::VERSION')"
+          test "$GITHUB_REF_NAME" = "$nexi_expected_tag" || {
+            echo "Tag $GITHUB_REF_NAME does not match gem version $nexi_expected_tag"
+            exit 1
+          }

@@ -1,25 +1,30 @@
 # Releasing `solidus_nexi`
 
-The gem is intended to be published to RubyGems under the new `solidus_nexi` name. The legacy `spree_dibs` name and its version sequence are not reused.
+This runbook separates verification from actions that change GitHub or RubyGems. Never create or push a release tag, GitHub release, or gem without explicit release approval.
 
-This is a maintainer runbook. Publishing changes external state, so every step through package inspection is safe to rehearse; the final push and `gem push` require an explicit release decision.
+The top-level `rake release` task is disabled because Bundler's default task combines tagging, pushing, and publication.
 
-## Before the first release
+## First-release prerequisites
 
-1. Confirm that `solidus_nexi` is available or controlled by the maintainers on RubyGems.
-2. Confirm that the GitHub repository has been renamed to `futhr/solidus_nexi` and that gemspec metadata resolves there.
-3. Require MFA on the RubyGems account and keep `rubygems_mfa_required = true` in the gemspec metadata.
-4. Activate `futhr/solidus_nexi` in Codecov and verify the OIDC-authenticated coverage report from `main`.
-5. Complete and record the real Nexi merchant test lifecycle described in [Testing](testing.md).
-6. Decide whether the first publication remains `0.1.0.alpha.1` or advances to another prerelease version.
+- Confirm that the `solidus_nexi` name is available and configure its pending trusted publisher or establish ownership on RubyGems.
+- Enable MFA for the RubyGems account. Keep `rubygems_mfa_required` and the RubyGems-only push host in the gemspec.
+- Confirm the repository metadata, security contact, and license.
+- Complete the merchant TEST lifecycle in [Testing](testing.md), including hosted card entry, webhooks, capture, cancellation, refund, failure cards, and repeated reconciliation.
+- Verify the Codecov project and the complete GitHub Actions matrix.
 
-Do not publish the package while the public repository URL, security contact, license, or provider test evidence is unresolved.
+Do not release while any item is unresolved.
 
-## Prepare the release
+## Prepare a release commit
 
-Start from a clean `main` branch and update the version and changelog together. The changelog entry must describe user-visible behavior and preserve its logical commit log; it must not be generated from commit subjects without a human edit.
+Start from an up-to-date branch based on `main` with no unrelated changes.
 
-Run the supported checks:
+1. Choose the version deliberately and update `lib/solidus_nexi/version.rb`.
+2. Rename `Unreleased` in `CHANGELOG.md` to the exact version and release date. Open a new empty `Unreleased` section above it.
+3. Update version-specific installation examples if needed.
+4. Commit those changes as one release-preparation commit and open a pull request.
+5. Merge only after review, CI, and merchant release evidence are green.
+
+Run the local checks from the reviewed release commit:
 
 ```sh
 bin/setup
@@ -31,58 +36,41 @@ bundle exec rubocop
 bundle exec bundler-audit check --update --ignore CVE-2026-47736 CVE-2026-47737
 (cd spec/dummy && bin/rails zeitwerk:check)
 gem build solidus_nexi.gemspec
+ruby dev/verify_package.rb solidus_nexi-*.gem
 ```
 
-The two ignored Puma advisories apply to the development server pulled in by `solidus_dev_support`; Puma is not a runtime dependency of the packaged engine. Remove the exceptions as soon as that helper accepts a patched Puma release.
+The ignored Puma advisories apply only to the development server pulled in by `solidus_dev_support`; Puma is not a runtime dependency. Remove the exceptions when that helper accepts a patched Puma version.
 
-Inspect the built package before publishing:
+Inspect the gem metadata and calculate the checksum without changing external state:
 
 ```sh
-NEXI_GEM_ARTIFACT=solidus_nexi-0.1.0.alpha.1.gem
-gem specification "$NEXI_GEM_ARTIFACT" name
-gem specification "$NEXI_GEM_ARTIFACT" version
-gem specification "$NEXI_GEM_ARTIFACT" required_ruby_version
-gem specification "$NEXI_GEM_ARTIFACT" metadata
-GEM_HOME=tmp/release-gems gem install --local --ignore-dependencies "$NEXI_GEM_ARTIFACT"
-GEM_HOME=tmp/release-gems gem contents solidus_nexi
+NEXI_RELEASE_VERSION=$(bundle exec ruby -Ilib -rsolidus_nexi/version -e 'print SolidusNexi::VERSION')
+NEXI_GEM_ARTIFACT="solidus_nexi-${NEXI_RELEASE_VERSION}.gem"
+gem specification "$NEXI_GEM_ARTIFACT" --yaml
+shasum -a 256 "$NEXI_GEM_ARTIFACT"
 ```
 
-The contents command applies after installing the built gem locally. Also inspect the archive itself and confirm that it includes runtime code, migrations, views, `README.md`, `CHANGELOG.md`, `SECURITY.md`, and `docs/`, but excludes fixtures, credentials, the dummy application, coverage, and legacy DIBS code.
+Keep that exact artifact. Do not rebuild between inspection and publication.
 
-## Git operation pattern
+## Tag and publish
 
-Keep release history linear and reviewable:
+Stop here until a maintainer explicitly approves the release version, commit, artifact checksum, and publication.
 
-1. Commit the final version and changelog as one release-preparation change, for example `Prepare solidus_nexi 0.1.0.alpha.1`.
-2. Merge only after CI and the provider release gate are green.
-3. Create an annotated tag matching the gem version, for example `v0.1.0.alpha.1`.
-4. Push the commit and tag, then verify the tag resolves to the reviewed release commit.
-5. Publish the exact gem artifact that was inspected; do not rebuild from a different tree.
-6. Verify the RubyGems page, checksums, metadata links, and installation in a clean application.
-7. Replace the README's source-prerelease badge with the live RubyGems version badge.
+After approval:
 
-An annotated alpha tag may preserve a reviewed source snapshot before merchant validation is complete. That tag does not authorize RubyGems publication: the provider test gate and every first-release check above must still pass before `gem push`.
+1. Confirm `main` is clean, synchronized with `origin/main`, and points at the reviewed release commit.
+2. Create one annotated `vVERSION` tag at that commit.
+3. Inspect the tag target and message locally.
+4. Push only the approved tag. Tag CI validates that its name matches the packaged version; it does not publish anything.
+5. Publish the already inspected gem with an MFA-protected session, or use RubyGems Trusted Publishing after its GitHub environment has been configured with required reviewers.
+6. Verify the RubyGems checksum, metadata links, owners, MFA indicator, and installation in a clean Solidus application.
+7. Create matching GitHub release notes from `CHANGELOG.md`.
 
-Suggested tag command:
+Never store a RubyGems API key in the repository. Prefer RubyGems Trusted Publishing with a protected `release` environment for later releases because it uses a short-lived, gem-scoped credential.
 
-```sh
-git tag -a v0.1.0.alpha.1 -m "Release solidus_nexi 0.1.0.alpha.1"
-```
+## After publication
 
-## Publish
-
-With the inspected artifact and an MFA-capable RubyGems session:
-
-```sh
-gem push solidus_nexi-0.1.0.alpha.1.gem
-```
-
-Do not automate the first publication until namespace ownership, MFA, provenance, and artifact verification have all been observed manually. Never place a RubyGems API key in the repository or a command transcript.
-
-## After publishing
-
-- Install the published version in a clean Solidus application rather than from the repository.
-- Re-run the generator, migrations, eager-load check, and deterministic test suite.
-- Confirm that the RubyGems and GitHub release notes match `CHANGELOG.md`.
-- Open the next `Unreleased` changelog section before merging additional user-visible work.
+- Install the published version in a clean Solidus app.
+- Run the generator, migrations, eager-load check, and a checkout smoke test.
+- Confirm the RubyGems, GitHub, and changelog versions agree.
 - Keep the legacy `v2.1.0` archive tag unchanged.
