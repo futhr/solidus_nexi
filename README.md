@@ -36,7 +36,7 @@ The extension creates a local payment source and durable operation before making
 
 Webhooks are authenticated with the Authorization value registered on the payment. Their event IDs are deduplicated in the database, and a background job retrieves the complete Nexi payment before changing Solidus financial state. This retrieval step makes duplicate and out-of-order notifications safe and is also how the extension resolves most uncertain network outcomes.
 
-Capture and refund requests reuse one persisted Nexi idempotency key for the same logical action. Payment creation and cancellation are not replayed after an uncertain response because the current endpoint contracts do not expose equivalent idempotency protection.
+Capture and refund requests reuse one persisted Nexi idempotency key for the same logical action. Refund initiation remains pending until authoritative retrieval reports completion or failure; a failed provider refund restores Solidus's refundable balance. Payment creation and cancellation are not replayed after an uncertain response because the current endpoint contracts do not expose equivalent idempotency protection.
 
 ## Installation
 

@@ -198,6 +198,7 @@ jobs:
             db/migrate/20260816090100_create_solidus_nexi_operations.rb
             db/migrate/20260816090200_create_solidus_nexi_webhook_receipts.rb
             db/migrate/20260817090000_add_reconciliation_required_to_solidus_nexi_payment_sources.rb
+            db/migrate/20260817100000_add_operation_ids_to_solidus_nexi_webhook_receipts.rb
             README.md
             CHANGELOG.md
             SECURITY.md

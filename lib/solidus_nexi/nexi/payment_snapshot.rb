@@ -42,8 +42,19 @@ module SolidusNexi
       end
 
       def completed_refund_id
-        completed = refunds.reverse.find { |refund| refund["state"].to_s.casecmp?("completed") }
+        completed = refunds.reverse.find { |refund| refund_state(refund) == "completed" }
         completed && required_string(completed, "refundId")
+      end
+
+      def refund_state_for(refund_id)
+        refund = refund_by_id(refund_id)
+        refund && refund_state(refund)
+      end
+
+      def refund_id_with_state(*states)
+        expected_states = states.map { |state| state.to_s.downcase }
+        refund = refunds.reverse.find { |candidate| expected_states.include?(refund_state(candidate)) }
+        refund && required_string(refund, "refundId")
       end
 
       private
@@ -51,6 +62,17 @@ module SolidusNexi
       def latest_identifier(collection, key)
         entry = Array(collection).reverse.find { |value| value.is_a?(Hash) && value[key].present? }
         entry && required_string(entry, key)
+      end
+
+      def refund_by_id(refund_id)
+        return unless Client::IDENTIFIER.match?(refund_id.to_s)
+
+        refunds.reverse.find { |refund| refund["refundId"].to_s == refund_id.to_s }
+      end
+
+      def refund_state(refund)
+        state = bounded_optional_string(refund["state"], "refund state")
+        state&.downcase
       end
 
       def required_string(object, key)

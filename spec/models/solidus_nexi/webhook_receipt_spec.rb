@@ -25,6 +25,21 @@ RSpec.describe SolidusNexi::WebhookReceipt, type: :model do
     expect(second).to eq(first)
   end
 
+  it "retains operation identifiers needed for exact failure reconciliation" do
+    refund_event = event.with(
+      name: "payment.refund.failed",
+      charge_id: "provider-charge-1",
+      refund_id: "provider-refund-1"
+    )
+
+    receipt, = described_class.record!(payment_method:, event: refund_event)
+
+    expect(receipt).to have_attributes(
+      provider_charge_id: "provider-charge-1",
+      provider_refund_id: "provider-refund-1"
+    )
+  end
+
   it "claims new and stale work but not active or terminal work" do
     receipt, = described_class.record!(payment_method:, event:)
     expect(receipt.claim_processing!).to be(true)

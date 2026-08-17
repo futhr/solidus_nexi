@@ -27,6 +27,22 @@ RSpec.describe SolidusNexi::ProcessWebhookJob, type: :job do
     expect(receipt.reload).to have_attributes(status: "processed", attempts: 1)
   end
 
+  it "passes exact provider operation identifiers into reconciliation" do
+    receipt.update!(provider_charge_id: "charge-1", provider_refund_id: "refund-1")
+    allow(service).to receive(:call).and_return(Struct.new(:payment).new(instance_double(Spree::Payment)))
+
+    expect(SolidusNexi::ReconcilePayment).to receive(:new).with(
+      payment_method:,
+      provider_payment_id: "provider-payment-1",
+      order_reference: "R123",
+      event_name: "payment.created",
+      event_charge_id: "charge-1",
+      event_refund_id: "refund-1"
+    ).and_return(service)
+
+    described_class.perform_now(receipt.id)
+  end
+
   it "marks a valid event ignored when no local payment matches" do
     allow(service).to receive(:call).and_return(Struct.new(:payment).new(nil))
 

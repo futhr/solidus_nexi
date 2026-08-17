@@ -15,7 +15,9 @@ module SolidusNexi
         payment_method: receipt.payment_method,
         provider_payment_id: receipt.provider_payment_id,
         order_reference: receipt.order_reference,
-        event_name: receipt.event_name
+        event_name: receipt.event_name,
+        event_charge_id: receipt.provider_charge_id,
+        event_refund_id: receipt.provider_refund_id
       ).call
       result.payment ? receipt.mark_processed! : receipt.mark_ignored!
     rescue => error

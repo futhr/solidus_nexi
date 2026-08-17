@@ -8,6 +8,17 @@ RSpec.describe SolidusNexi::Nexi::PaymentSnapshot do
     expect(snapshot.amounts).to eq(reserved: 10_000, charged: 10_000, refunded: 10_000, cancelled: 0)
     expect(snapshot.charge_id).to eq("050491ace345418d8ca70605a0c9df96")
     expect(snapshot.completed_refund_id).to eq("60e208b88b94403bb9ced1cca661db99")
+    expect(snapshot.refund_state_for("60e208b88b94403bb9ced1cca661db99")).to eq("completed")
+    expect(snapshot.refund_id_with_state(:completed)).to eq("60e208b88b94403bb9ced1cca661db99")
+  end
+
+  it "extracts an exact asynchronous refund state" do
+    body = JSON.parse(fixture("nexi/payments/refund_failed.json"))
+    snapshot = described_class.new(body)
+
+    expect(snapshot.refund_state_for("60e208b88b94403bb9ced1cca661db99")).to eq("failed")
+    expect(snapshot.refund_state_for("another-refund")).to be_nil
+    expect(snapshot.refund_id_with_state("failed")).to eq("60e208b88b94403bb9ced1cca661db99")
   end
 
   it "rejects a response for a different payment" do

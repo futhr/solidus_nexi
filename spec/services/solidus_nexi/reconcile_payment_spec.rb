@@ -230,6 +230,106 @@ RSpec.describe SolidusNexi::ReconcilePayment, type: :model do
       provider_refund_id: "60e208b88b94403bb9ced1cca661db99"
     )
     expect(payment.refunds.count).to eq(1)
+    expect(source.reload).to have_attributes(
+      provider_status: "refunded",
+      refunded_amount_minor: 10_000,
+      reconciliation_required: false
+    )
+  end
+
+  it "keeps an accepted refund pending until Nexi completes it" do
+    source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK", provider_payment_id:)
+    payment = create(:payment, order:, payment_method:, source:, amount: 100, state: "completed")
+    refund = create(
+      :refund,
+      payment:,
+      amount: 100,
+      transaction_id: "60e208b88b94403bb9ced1cca661db99"
+    )
+    operation = accepted_refund_operation(payment, refund)
+    use_provider_fixture("nexi/payments/refund_pending.json", order:)
+
+    result = described_class.new(source:).call
+
+    expect(result.mapping).to have_attributes(
+      target_state: "completed",
+      reconciliation_required: true,
+      reason: "refund_pending"
+    )
+    expect(operation.reload).to have_attributes(status: "accepted", reconciliation_required: true)
+    expect(refund.reload).to be_persisted
+    expect(source.reload).to have_attributes(
+      provider_status: "refund_pending",
+      refunded_amount_minor: 0,
+      reconciliation_required: true
+    )
+  end
+
+  it "removes only the exact failed local refund and restores refundable value" do
+    source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK", provider_payment_id:)
+    payment = create(:payment, order:, payment_method:, source:, amount: 100, state: "completed")
+    refund = create(
+      :refund,
+      payment:,
+      amount: 100,
+      transaction_id: "60e208b88b94403bb9ced1cca661db99"
+    )
+    operation = accepted_refund_operation(payment, refund)
+    use_provider_fixture("nexi/payments/refund_failed.json", order:)
+    service = described_class.new(
+      source:,
+      event_name: "payment.refund.failed",
+      event_refund_id: "60e208b88b94403bb9ced1cca661db99"
+    )
+
+    2.times { service.call }
+
+    expect(Spree::Refund.where(id: refund.id)).to be_empty
+    expect(payment.reload.credit_allowed).to eq(BigDecimal("100"))
+    expect(operation.reload).to have_attributes(
+      status: "rejected",
+      provider_code: "refund_failed",
+      provider_refund_id: "60e208b88b94403bb9ced1cca661db99",
+      reconciliation_required: false
+    )
+    expect(source.reload).to have_attributes(
+      provider_status: "refund_failed",
+      refunded_amount_minor: 0,
+      reconciliation_required: false
+    )
+  end
+
+  it "marks a linked reimbursement errored when its provider refund fails" do
+    reimbursement = create(:reimbursement)
+    reimbursement.order.update!(currency: "SEK")
+    source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK", provider_payment_id:)
+    payment = create(
+      :payment,
+      order: reimbursement.order,
+      payment_method:,
+      source:,
+      amount: 100,
+      state: "completed"
+    )
+    refund = create(
+      :refund,
+      payment:,
+      reimbursement:,
+      amount: 100,
+      transaction_id: "60e208b88b94403bb9ced1cca661db99"
+    )
+    reimbursement.update!(reimbursement_status: "reimbursed")
+    accepted_refund_operation(payment, refund)
+    use_provider_fixture("nexi/payments/refund_failed.json", order: reimbursement.order)
+
+    described_class.new(
+      source:,
+      event_name: "payment.refund.failed",
+      event_refund_id: "60e208b88b94403bb9ced1cca661db99"
+    ).call
+
+    expect(reimbursement.reload).to be_errored
+    expect(payment.reload.credit_allowed).to eq(BigDecimal("100"))
   end
 
   it "does not invent a refund record without a provider refund ID" do
@@ -252,6 +352,26 @@ RSpec.describe SolidusNexi::ReconcilePayment, type: :model do
     client = Object.new
     client.define_singleton_method(:retrieve_payment) { |**| result }
     SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+  end
+
+  def accepted_refund_operation(payment, refund)
+    SolidusNexi::Operation.create_or_find_intent!(
+      payment:,
+      kind: :refund,
+      logical_reference: "refund:#{refund.id}",
+      amount_minor: 10_000,
+      currency: "SEK",
+      request_fingerprint: "f" * 64,
+      idempotency_key: "stable-refund-key-#{refund.id}"
+    ).tap do |operation|
+      operation.update!(
+        status: "accepted",
+        provider_payment_id: provider_payment_id,
+        provider_charge_id: "050491ace345418d8ca70605a0c9df96",
+        provider_refund_id: "60e208b88b94403bb9ced1cca661db99",
+        reconciliation_required: true
+      )
+    end
   end
 
   def apply_provider_attributes(provider_payment, attributes)

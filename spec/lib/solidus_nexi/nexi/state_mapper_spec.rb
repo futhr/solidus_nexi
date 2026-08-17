@@ -13,6 +13,37 @@ RSpec.describe SolidusNexi::Nexi::StateMapper do
     expect(result.target_state).to eq("completed")
   end
 
+  it "distinguishes pending, completed, failed, and partial refunds" do
+    pending = mapper.map(
+      summary: {"chargedAmount" => 10_000},
+      expected_amount_minor: 10_000,
+      event_name: "payment.refund.initiated.v2"
+    )
+    completed = mapper.map(
+      summary: {"chargedAmount" => 10_000, "refundedAmount" => 10_000},
+      expected_amount_minor: 10_000,
+      event_name: "payment.refund.completed"
+    )
+    failed = mapper.map(
+      summary: {"chargedAmount" => 10_000},
+      expected_amount_minor: 10_000,
+      event_name: "payment.refund.failed"
+    )
+    partial = mapper.map(
+      summary: {"chargedAmount" => 10_000, "refundedAmount" => 5_000},
+      expected_amount_minor: 10_000
+    )
+
+    expect(pending).to have_attributes(target_state: "completed", reconciliation_required: true,
+      reason: "refund_pending")
+    expect(completed).to have_attributes(target_state: "completed", reconciliation_required: false,
+      reason: "refunded")
+    expect(failed).to have_attributes(target_state: "completed", reconciliation_required: false,
+      reason: "refund_failed")
+    expect(partial).to have_attributes(target_state: nil, reconciliation_required: true,
+      reason: "unexpected_partial_refund")
+  end
+
   it "does not pretend a partial charge is supported" do
     result = mapper.map(summary: {"chargedAmount" => 5_000}, expected_amount_minor: 10_000)
     expect(result).to have_attributes(target_state: nil, reconciliation_required: true,

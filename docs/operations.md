@@ -18,7 +18,7 @@ Three extension-owned tables support operations:
 | `solidus_nexi_operations` | What logical mutation was requested, which idempotency key was used, and is its outcome known? |
 | `solidus_nexi_webhook_receipts` | Which event IDs were received, queued, processed, ignored, or failed? |
 
-The operation states are `pending`, `dispatched`, `succeeded`, `rejected`, `unknown`, `reconciled`, and `abandoned`. An `unknown` operation does not mean failure. It means the request may have reached Nexi but the application cannot safely claim success or retry without following the endpoint-specific policy. `abandoned` is used only for a checkout create whose provider identity is still unknown after Nexi's 48-hour checkout lifetime plus a safety margin.
+The operation states are `pending`, `dispatched`, `accepted`, `succeeded`, `rejected`, `unknown`, `reconciled`, and `abandoned`. An `accepted` refund has a Nexi refund ID but is not financially complete until provider retrieval reports completion. An `unknown` operation does not mean failure. It means the request may have reached Nexi but the application cannot safely claim success or retry without following the endpoint-specific policy. `abandoned` is used only for a checkout create whose provider identity is still unknown after Nexi's 48-hour checkout lifetime plus a safety margin.
 
 ## Retry policy
 
@@ -27,10 +27,12 @@ The operation states are `pending`, `dispatched`, `succeeded`, `rejected`, `unkn
 | Create payment | No | Do not replay while the checkout can still exist. Persist any returned payment ID before local validation and recover it through retrieval. With no returned ID or webhook, abandon only after the 48-hour checkout lifetime plus five minutes. |
 | Charge | Yes | Retry only the same logical operation with the persisted key and unchanged amount. |
 | Cancel | No | Do not replay. Retrieve the payment and reconcile before another operator action. |
-| Refund | Yes | Retry only the same logical operation with the persisted key and unchanged charge/amount. |
+| Refund | Yes | Retry only the same logical operation with the persisted key and unchanged charge/amount. A 201 response is recorded as accepted; completion or failure is determined by retrieval. |
 | Retrieve | Not needed | Background jobs use bounded backoff for transport, provider-availability, and rate-limit failures. |
 
 The adapter deliberately generates no hidden client retries for mutations. A timeout or server error after dispatch is preserved as an uncertain outcome instead of being reported as a clean failure.
+
+Nexi refund initiation is asynchronous. While it is pending, the payment remains completed and the source remains flagged for reconciliation. Completion retains one Solidus refund with the provider refund ID. An exact `payment.refund.failed` event or retrieved failed state removes only the matching local refund, restores `credit_allowed`, marks a linked reimbursement errored, recalculates the order, and preserves the rejected operation as the audit record.
 
 ## Webhook behavior
 

@@ -4,7 +4,7 @@ module SolidusNexi
   class Refund < Mutation
     def initialize(payment:, refund:, amount_minor:)
       @refund = refund
-      super(payment:, amount_minor:, logical_reference: "refund:#{refund.id}")
+      super(payment:, amount_minor:, logical_reference: logical_reference_for(payment, refund))
     end
 
     def call
@@ -12,7 +12,7 @@ module SolidusNexi
       charge_id = @source.provider_charge_id.presence || latest_charge_id!
       payload = {amount: @amount_minor, provider_charge_id: charge_id}
       operation = operation(kind: :refund, payload:, idempotent: true)
-      if operation.status == "succeeded" || operation.status == "reconciled"
+      if %w[accepted succeeded reconciled].include?(operation.status)
         return Result.new(authorization: operation.provider_refund_id, provider_request_id: operation.provider_request_id)
       end
 
@@ -34,6 +34,17 @@ module SolidusNexi
 
     private
 
+    def logical_reference_for(payment, refund)
+      return "refund:#{refund.id}" if refund.persisted?
+
+      active = Operation.where(payment:, kind: "refund", status: %w[pending dispatched unknown accepted succeeded])
+        .order(created_at: :desc)
+        .first
+      return active.logical_reference if active
+
+      "refund:attempt:#{Operation.where(payment:, kind: "refund").count + 1}"
+    end
+
     def submit_refund(operation, charge_id)
       response = client.refund(
         charge_id:,
@@ -42,13 +53,13 @@ module SolidusNexi
       )
       refund_id = response_identifier!(response, "refundId")
       Operation.transaction do
-        operation.mark_succeeded!(
+        operation.mark_accepted!(
           provider_request_id: response.provider_request_id,
           provider_payment_id: @source.provider_payment_id,
           provider_charge_id: charge_id,
           provider_refund_id: refund_id
         )
-        @source.update!(provider_status: "refund_pending")
+        @source.update!(provider_status: "refund_pending", reconciliation_required: true)
       end
       Result.new(authorization: refund_id, provider_request_id: response.provider_request_id)
     end

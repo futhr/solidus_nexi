@@ -11,6 +11,8 @@ module SolidusNexi
         payment.charge.failed.v2
         payment.cancel.failed
       ].freeze
+      REFUND_PENDING_EVENTS = %w[payment.refund.initiated.v2].freeze
+      REFUND_FAILURE_EVENTS = %w[payment.refund.failed].freeze
       TERMINAL_STATES = %w[completed void failed].freeze
 
       def map(summary:, expected_amount_minor:, event_name: nil)
@@ -18,23 +20,13 @@ module SolidusNexi
         values = summary_values(summary)
         validate_summary!(values, expected)
 
-        return Mapping.new(target_state: "completed", reconciliation_required: false, reason: "charged") if values[:charged] >= expected
-        if values[:charged].positive?
-          return Mapping.new(target_state: nil, reconciliation_required: true, reason: "unexpected_partial_charge")
-        end
-        return Mapping.new(target_state: "void", reconciliation_required: false, reason: "cancelled") if values[:cancelled] >= expected
-        if values[:cancelled].positive?
-          return Mapping.new(target_state: nil, reconciliation_required: true, reason: "unexpected_partial_cancel")
-        end
-        return Mapping.new(target_state: "pending", reconciliation_required: false, reason: "reserved") if values[:reserved] >= expected
-        if values[:reserved].positive?
-          return Mapping.new(target_state: nil, reconciliation_required: true, reason: "unexpected_partial_reservation")
-        end
-        if FAILURE_EVENTS.include?(event_name)
-          return Mapping.new(target_state: "failed", reconciliation_required: false, reason: "provider_failure")
-        end
-
-        Mapping.new(target_state: nil, reconciliation_required: true, reason: "provider_state_not_final")
+        [
+          refund_mapping(values, expected, event_name),
+          charge_mapping(values, expected),
+          cancel_mapping(values, expected),
+          reservation_mapping(values, expected),
+          failure_mapping(event_name)
+        ].compact.first || mapping(nil, true, "provider_state_not_final")
       end
 
       def transition_allowed?(current_state, target_state)
@@ -49,6 +41,47 @@ module SolidusNexi
       end
 
       private
+
+      def refund_mapping(values, expected, event_name)
+        if values[:refunded] >= expected
+          return mapping("completed", false, "refunded")
+        end
+        if values[:refunded].positive?
+          return mapping(nil, true, "unexpected_partial_refund")
+        end
+        return unless values[:charged] >= expected
+
+        if REFUND_FAILURE_EVENTS.include?(event_name)
+          return mapping("completed", false, "refund_failed")
+        end
+        mapping("completed", true, "refund_pending") if REFUND_PENDING_EVENTS.include?(event_name)
+      end
+
+      def charge_mapping(values, expected)
+        return mapping("completed", false, "charged") if values[:charged] >= expected
+
+        mapping(nil, true, "unexpected_partial_charge") if values[:charged].positive?
+      end
+
+      def cancel_mapping(values, expected)
+        return mapping("void", false, "cancelled") if values[:cancelled] >= expected
+
+        mapping(nil, true, "unexpected_partial_cancel") if values[:cancelled].positive?
+      end
+
+      def reservation_mapping(values, expected)
+        return mapping("pending", false, "reserved") if values[:reserved] >= expected
+
+        mapping(nil, true, "unexpected_partial_reservation") if values[:reserved].positive?
+      end
+
+      def failure_mapping(event_name)
+        mapping("failed", false, "provider_failure") if FAILURE_EVENTS.include?(event_name)
+      end
+
+      def mapping(target_state, reconciliation_required, reason)
+        Mapping.new(target_state:, reconciliation_required:, reason:)
+      end
 
       def summary_values(summary)
         {

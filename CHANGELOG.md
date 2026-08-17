@@ -13,6 +13,9 @@ The legacy repository did not retain release tags for its original `2.0.3` and `
 - Return rate-limited mutations to a safe retryable state without changing their persisted idempotency key.
 - Classify empty or non-JSON provider errors by HTTP status and bound streamed HTTP responses before buffering them.
 - Reload durable operations after a database rollback so provider-success/local-failure races are always marked for reconciliation.
+- Treat refund creation as asynchronous acceptance, reconcile completion by exact provider refund ID, and restore Solidus refundable value when Nexi reports a final refund failure.
+- Preserve returned checkout identities before local validation and safely abandon only identity-less creates after Nexi's checkout lifetime.
+- Match extension foreign-key widths to Solidus on MySQL and exercise MySQL 8.4 in CI.
 
 ### Changed
 

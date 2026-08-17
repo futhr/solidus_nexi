@@ -5,7 +5,7 @@ module SolidusNexi
     self.table_name = "solidus_nexi_operations"
 
     KINDS = %w[create charge cancel refund].freeze
-    STATUSES = %w[pending dispatched succeeded rejected unknown reconciled abandoned].freeze
+    STATUSES = %w[pending dispatched accepted succeeded rejected unknown reconciled abandoned].freeze
     IDEMPOTENT_KINDS = %w[charge refund].freeze
 
     belongs_to :payment, class_name: "Spree::Payment"
@@ -61,10 +61,22 @@ module SolidusNexi
       )
     end
 
+    def mark_accepted!(provider_request_id:, provider_payment_id:, provider_charge_id:, provider_refund_id:)
+      update!(
+        status: "accepted",
+        provider_request_id:,
+        provider_payment_id:,
+        provider_charge_id:,
+        provider_refund_id:,
+        reconciliation_required: true,
+        completed_at: nil
+      )
+    end
+
     def mark_rejected!(error)
       update!(
         status: "rejected",
-        provider_request_id: safe_error_attribute(error, :provider_request_id),
+        provider_request_id: safe_error_attribute(error, :provider_request_id) || provider_request_id,
         provider_code: safe_error_attribute(error, :provider_code),
         reconciliation_required: false,
         completed_at: Time.current

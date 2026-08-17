@@ -7,7 +7,7 @@ namespace :solidus_nexi do
       SolidusNexi::PaymentSource.where(id: arguments[:source_id])
     else
       payment_ids = SolidusNexi::Operation
-        .where(status: %w[dispatched unknown])
+        .where(status: %w[dispatched accepted unknown])
         .where("dispatched_at < ? OR reconciliation_required = ?", 5.minutes.ago, true)
         .select(:payment_id)
       source_ids = Spree::Payment.where(id: payment_ids, source_type: "SolidusNexi::PaymentSource").select(:source_id)

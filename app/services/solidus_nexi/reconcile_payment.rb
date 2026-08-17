@@ -6,12 +6,14 @@ module SolidusNexi
     LOCAL_MUTATION_GRACE = 30.seconds
 
     def initialize(source: nil, payment_method: nil, provider_payment_id: nil,
-      order_reference: nil, event_name: nil)
+      order_reference: nil, event_name: nil, event_charge_id: nil, event_refund_id: nil)
       @source = source
       @payment_method = payment_method || source&.payment_method
       @provider_payment_id = provider_payment_id || source&.provider_payment_id
       @order_reference = order_reference
       @event_name = event_name
+      @event_charge_id = event_charge_id
+      @event_refund_id = event_refund_id
     end
 
     def call
@@ -24,15 +26,12 @@ module SolidusNexi
       payment = payment_for(@source)
       validate_order!(payment, snapshot)
       amounts = snapshot.amounts
-      mapping = Nexi::StateMapper.new.map(
-        summary: snapshot.summary,
-        expected_amount_minor: snapshot.amount_minor,
-        event_name: @event_name
-      )
+      mapping = initial_mapping(snapshot)
 
       payment.with_lock do
         payment.reload
-        reconcile_operations!(payment, snapshot, amounts)
+        refund_outcome = reconcile_operations!(payment, snapshot, amounts)
+        mapping = refund_outcome.mapping || mapping
         if recent_local_mutation?(payment)
           update_source!(snapshot, amounts, mapping)
           ReconcilePaymentJob.set(wait: LOCAL_MUTATION_GRACE).perform_later(@source.id)
@@ -48,6 +47,14 @@ module SolidusNexi
     end
 
     private
+
+    def initial_mapping(snapshot)
+      Nexi::StateMapper.new.map(
+        summary: snapshot.summary,
+        expected_amount_minor: snapshot.amount_minor,
+        event_name: @event_name
+      )
+    end
 
     def validate_input!
       unless @payment_method.is_a?(PaymentMethod) && @provider_payment_id.present?
@@ -139,6 +146,9 @@ module SolidusNexi
       if snapshot.order_reference != OrderSerializer.order_reference(payment.order.number)
         raise Nexi::ConflictError, "Nexi payment has a different order reference"
       end
+      if @event_charge_id.present? && snapshot.charge_id.present? && @event_charge_id != snapshot.charge_id
+        raise Nexi::ConflictError, "webhook charge does not match the Nexi payment"
+      end
     end
 
     def update_source!(snapshot, amounts, mapping)
@@ -168,12 +178,18 @@ module SolidusNexi
     end
 
     def reconcile_operations!(payment, snapshot, amounts)
-      Operation.requiring_reconciliation.where(payment:).find_each do |operation|
+      refund_outcome = RefundReconciliation.new(
+        payment:,
+        snapshot:,
+        amounts:,
+        event_name: @event_name,
+        event_refund_id: @event_refund_id
+      ).call
+      Operation.requiring_reconciliation.where(payment:).where.not(kind: "refund").find_each do |operation|
         fulfilled = case operation.kind
         when "create" then true
         when "charge" then amounts[:charged] >= operation.amount_minor
         when "cancel" then amounts[:cancelled] >= operation.amount_minor
-        when "refund" then amounts[:refunded] >= operation.amount_minor
         end
         next unless fulfilled
 
@@ -182,21 +198,13 @@ module SolidusNexi
           provider_charge_id: snapshot.charge_id || operation.provider_charge_id,
           provider_refund_id: snapshot.refund_id || operation.provider_refund_id
         )
-        reconcile_local_refund!(operation, snapshot) if operation.kind == "refund"
         operation.mark_reconciled!
       end
-    end
-
-    def reconcile_local_refund!(operation, snapshot)
-      refund_id = operation.logical_reference.delete_prefix("refund:")
-      refund = Spree::Refund.find_by(id: refund_id, payment: operation.payment)
-      return unless refund && refund.transaction_id.blank?
-
-      refund.update!(transaction_id: snapshot.refund_id || operation.provider_refund_id)
+      refund_outcome
     end
 
     def recent_local_mutation?(payment)
-      Operation.where(payment:, kind: %w[charge cancel refund], status: %w[dispatched succeeded])
+      Operation.where(payment:, kind: %w[charge cancel refund], status: %w[dispatched accepted succeeded])
         .exists?(updated_at: LOCAL_MUTATION_GRACE.ago..)
     end
 

@@ -18,6 +18,8 @@ module SolidusNexi
         event_id: event.id,
         event_name: event.name,
         provider_payment_id: event.payment_id,
+        provider_charge_id: event.charge_id,
+        provider_refund_id: event.refund_id,
         order_reference: event.order_reference,
         merchant_id: event.merchant_id,
         occurred_at: event.occurred_at

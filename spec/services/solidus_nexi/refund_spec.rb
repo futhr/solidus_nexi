@@ -34,6 +34,42 @@ RSpec.describe SolidusNexi::Refund, type: :model do
 
     operation = SolidusNexi::Operation.find_by!(payment:, kind: "refund")
     expect(keys).to eq([operation.idempotency_key])
+    expect(operation).to have_attributes(
+      status: "accepted",
+      provider_refund_id: "07958a7595bb4584a79d00680fd31e15",
+      reconciliation_required: true
+    )
+    expect(source.reload).to have_attributes(provider_status: "refund_pending", reconciliation_required: true)
+  end
+
+  it "reuses an unsaved Solidus refund intent but permits a new attempt after final failure" do
+    calls = 0
+    client = Object.new
+    client.define_singleton_method(:refund) do |**|
+      calls += 1
+      SolidusNexi::Nexi::Result.new(
+        body: {"refundId" => "provider-refund-#{calls}"},
+        http_status: 201,
+        provider_request_id: "request-#{calls}"
+      )
+    end
+    SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+
+    first_refund = build(:refund, payment:, amount: 100, transaction_id: nil)
+    second_refund = build(:refund, payment:, amount: 100, transaction_id: nil)
+    described_class.new(payment:, refund: first_refund, amount_minor: 10_000).call
+    described_class.new(payment:, refund: second_refund, amount_minor: 10_000).call
+    first_operation = SolidusNexi::Operation.find_by!(payment:, logical_reference: "refund:attempt:1")
+    first_operation.mark_rejected!(
+      SolidusNexi::Nexi::Error.new("Nexi refund failed", provider_code: "refund_failed")
+    )
+
+    third_refund = build(:refund, payment:, amount: 100, transaction_id: nil)
+    described_class.new(payment:, refund: third_refund, amount_minor: 10_000).call
+
+    expect(calls).to eq(2)
+    expect(SolidusNexi::Operation.where(payment:, kind: "refund").order(:created_at).pluck(:logical_reference))
+      .to eq(%w[refund:attempt:1 refund:attempt:2])
   end
 
   it "rejects a partial refund before network dispatch" do
