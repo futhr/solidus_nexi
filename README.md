@@ -1,7 +1,7 @@
 # Solidus Nexi
 
 [![Test](https://github.com/futhr/solidus_nexi/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/futhr/solidus_nexi/actions/workflows/test.yml)
-[![Codecov](https://codecov.io/gh/futhr/solidus_nexi/branch/main/graph/badge.svg)](https://codecov.io/gh/futhr/solidus_nexi)
+[![Codecov](https://codecov.io/github/futhr/solidus_nexi/branch/main/graph/badge.svg)](https://app.codecov.io/github/futhr/solidus_nexi)
 [![Ruby](https://img.shields.io/badge/Ruby-3.2%2B-CC342D?logo=ruby&logoColor=white)](https://www.ruby-lang.org/)
 [![Solidus](https://img.shields.io/badge/Solidus-4.6%E2%80%934.7-2B59C3)](https://solidus.io/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE.md)

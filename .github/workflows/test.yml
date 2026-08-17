@@ -65,6 +65,7 @@ jobs:
         with:
           use_oidc: true
           files: ./coverage/lcov/lcov.info
+          disable_search: true
           fail_ci_if_error: true
 
   postgres:
