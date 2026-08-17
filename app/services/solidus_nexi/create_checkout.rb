@@ -7,6 +7,7 @@ module SolidusNexi
   class CreateCheckout
     Result = Data.define(:payment, :source, :provider_payment_id, :hosted_payment_page_url, :reused)
     CHECKOUT_LIFETIME = 48.hours
+    UNKNOWN_CREATE_ABANDON_AFTER = CHECKOUT_LIFETIME + 5.minutes
 
     def initialize(order:, payment_method:, webhook_url:, return_url_for:, cancel_url_for:)
       @order = order
@@ -17,56 +18,54 @@ module SolidusNexi
     end
 
     def call
+      @returned_provider_payment_id = nil
+      @provider_request_id = nil
+      @unresolved_operation = nil
       prepared = prepare_local_operation
       return prepared if prepared.is_a?(Result)
 
       payment, source, payload, operation = prepared
       complete_checkout(payment, source, payload, operation)
     rescue Nexi::TimeoutUnknownOutcome => error
-      operation&.mark_unknown!(error)
-      enqueue_reconciliation(source)
-      raise Nexi::ReconciliationRequired, "Nexi checkout creation has an unknown outcome"
+      handle_unknown_checkout(operation, source, error)
     rescue Nexi::MalformedResponseError => error
-      operation&.mark_unknown!(error)
-      enqueue_reconciliation(source)
-      raise Nexi::ReconciliationRequired, "Nexi checkout creation has an unknown outcome"
+      handle_unknown_checkout(operation, source, error)
     rescue Nexi::Error => error
-      unless error.is_a?(Nexi::OperationInProgress) || error.is_a?(Nexi::ReconciliationRequired)
-        operation&.mark_rejected!(error) if operation&.status == "dispatched"
-        payment&.invalidate! if payment&.can_invalidate?
-      end
-      raise
+      handle_provider_error(error, operation, payment)
     rescue ActiveRecord::ActiveRecordError => error
-      if dispatched_after_rollback?(operation)
-        operation.mark_unknown!(error)
-        enqueue_reconciliation(source)
-        raise Nexi::ReconciliationRequired, "Nexi succeeded but local persistence must be reconciled"
-      end
-      raise
+      handle_persistence_error(error, operation, source)
     end
 
     private
 
     def complete_checkout(payment, source, payload, operation)
       response = client.create_payment(payload:)
-      provider_payment_id = response_identifier!(response, "paymentId")
+      @returned_provider_payment_id = response_identifier!(response, "paymentId")
+      @provider_request_id = response.provider_request_id
+      operation.update!(
+        provider_payment_id: @returned_provider_payment_id,
+        provider_request_id: @provider_request_id
+      )
       hosted_url = validate_hosted_url!(response["hostedPaymentPageUrl"])
 
       Operation.transaction do
         source.update!(
-          provider_payment_id:,
+          provider_payment_id: @returned_provider_payment_id,
           hosted_payment_page_url: hosted_url,
           checkout_expires_at: Time.current + CHECKOUT_LIFETIME,
           provider_status: "created"
         )
-        payment.update!(response_code: provider_payment_id)
-        operation.mark_succeeded!(provider_request_id: response.provider_request_id, provider_payment_id:)
+        payment.update!(response_code: @returned_provider_payment_id)
+        operation.mark_succeeded!(
+          provider_request_id: @provider_request_id,
+          provider_payment_id: @returned_provider_payment_id
+        )
       end
 
       Result.new(
         payment:,
         source:,
-        provider_payment_id:,
+        provider_payment_id: @returned_provider_payment_id,
         hosted_payment_page_url: hosted_url,
         reused: false
       )
@@ -106,14 +105,74 @@ module SolidusNexi
     def reject_unresolved_create!
       unresolved = current_payments.filter_map do |payment|
         Operation.where(payment:, kind: "create", status: %w[pending dispatched unknown]).first
-      end.first
-      return unless unresolved
-
-      if unresolved.status == "unknown" || unresolved.dispatched_at&.<(5.minutes.ago)
-        raise Nexi::ReconciliationRequired, "a previous checkout creation must be reconciled before retrying"
       end
 
-      raise Nexi::OperationInProgress, "checkout creation is already in progress"
+      unresolved.each do |operation|
+        if safely_abandonable?(operation)
+          operation.mark_abandoned!
+          operation.payment.invalidate! if operation.payment.can_invalidate?
+          next
+        end
+
+        if operation.provider_payment_id.present?
+          @unresolved_operation = operation
+          raise Nexi::ReconciliationRequired, "a previous checkout creation must be reconciled before retrying"
+        end
+
+        if operation.status == "unknown" || operation.dispatched_at&.<(5.minutes.ago)
+          raise Nexi::ReconciliationRequired, "a previous checkout creation must be reconciled before retrying"
+        end
+
+        raise Nexi::OperationInProgress, "checkout creation is already in progress"
+      end
+    end
+
+    def safely_abandonable?(operation)
+      return false if operation.provider_payment_id.present?
+
+      age_anchor = operation.dispatched_at || operation.updated_at || operation.created_at
+      if operation.status == "pending"
+        return age_anchor < 5.minutes.ago
+      end
+
+      if %w[dispatched unknown].include?(operation.status)
+        return age_anchor < UNKNOWN_CREATE_ABANDON_AFTER.ago
+      end
+
+      false
+    end
+
+    def mark_unknown!(operation, error)
+      operation&.mark_unknown!(
+        error,
+        provider_payment_id: @returned_provider_payment_id,
+        provider_request_id: @provider_request_id
+      )
+    end
+
+    def handle_unknown_checkout(operation, source, error)
+      mark_unknown!(operation, error)
+      enqueue_reconciliation(source, operation)
+      raise Nexi::ReconciliationRequired, "Nexi checkout creation has an unknown outcome"
+    end
+
+    def handle_provider_error(error, operation, payment)
+      if error.is_a?(Nexi::ReconciliationRequired) && @unresolved_operation
+        enqueue_reconciliation(@unresolved_operation.payment.source, @unresolved_operation)
+      end
+      unless error.is_a?(Nexi::OperationInProgress) || error.is_a?(Nexi::ReconciliationRequired)
+        operation&.mark_rejected!(error) if operation&.status == "dispatched"
+        payment&.invalidate! if payment&.can_invalidate?
+      end
+      raise error
+    end
+
+    def handle_persistence_error(error, operation, source)
+      raise error unless operation&.persisted? && operation.reload.status == "dispatched"
+
+      mark_unknown!(operation, error)
+      enqueue_reconciliation(source, operation)
+      raise Nexi::ReconciliationRequired, "Nexi succeeded but local persistence must be reconciled"
     end
 
     def current_payments
@@ -196,12 +255,12 @@ module SolidusNexi
       @client ||= SolidusNexi.configuration.client_factory.call(@payment_method)
     end
 
-    def enqueue_reconciliation(source)
-      ReconcilePaymentJob.perform_later(source.id) if source&.persisted? && source.provider_payment_id.present?
-    end
+    def enqueue_reconciliation(source, operation)
+      provider_payment_id = source&.provider_payment_id.presence ||
+        operation&.provider_payment_id.presence || @returned_provider_payment_id
+      return unless source&.persisted? && provider_payment_id.present?
 
-    def dispatched_after_rollback?(operation)
-      operation&.persisted? && operation.reload.status == "dispatched"
+      ReconcilePaymentJob.perform_later(source.id, provider_payment_id:)
     end
   end
 end

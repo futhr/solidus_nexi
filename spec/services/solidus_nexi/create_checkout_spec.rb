@@ -88,8 +88,40 @@ RSpec.describe SolidusNexi::CreateCheckout, type: :model do
     end
 
     expect(client).to have_received(:create_payment).once
-    expect(SolidusNexi::Operation.find_by!(kind: "create"))
-      .to have_attributes(status: "unknown", reconciliation_required: true)
+    operation = SolidusNexi::Operation.find_by!(kind: "create")
+    expect(operation).to have_attributes(
+      status: "unknown",
+      provider_payment_id: "provider-payment-1",
+      provider_request_id: "request-malformed",
+      reconciliation_required: true
+    )
+    expect(SolidusNexi::ReconcilePaymentJob)
+      .to have_been_enqueued
+      .with(operation.payment.source_id, provider_payment_id: "provider-payment-1")
+      .exactly(2).times
+  end
+
+  it "retains the returned payment ID when local checkout persistence rolls back" do
+    client = instance_double(SolidusNexi::Nexi::Client, create_payment: created_response)
+    SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+    allow_any_instance_of(SolidusNexi::Operation).to receive(:mark_succeeded!)
+      .and_raise(ActiveRecord::StatementInvalid, "database unavailable")
+
+    expect { service.call }.to raise_error(SolidusNexi::Nexi::ReconciliationRequired)
+
+    operation = SolidusNexi::Operation.find_by!(kind: "create")
+    expect(operation).to have_attributes(
+      status: "unknown",
+      provider_payment_id: "06afca06db214766b3a230c991e14a5d",
+      provider_request_id: "request-create",
+      reconciliation_required: true
+    )
+    expect(operation.payment.source).to have_attributes(provider_payment_id: nil, hosted_payment_page_url: nil)
+    expect(SolidusNexi::ReconcilePaymentJob)
+      .to have_been_enqueued.with(
+        operation.payment.source_id,
+        provider_payment_id: "06afca06db214766b3a230c991e14a5d"
+      )
   end
 
   it "rejects a provider validation error and invalidates the local payment" do
@@ -124,9 +156,73 @@ RSpec.describe SolidusNexi::CreateCheckout, type: :model do
     expect { service.call }.to raise_error(SolidusNexi::Nexi::ReconciliationRequired)
   end
 
+  it "abandons an unknowable checkout only after Nexi's checkout lifetime" do
+    old_payment, = create_local_checkout_intent
+    old_operation = create_checkout_operation(old_payment)
+    old_operation.update!(
+      status: "unknown",
+      dispatched_at: (described_class::UNKNOWN_CREATE_ABANDON_AFTER + 1.minute).ago,
+      reconciliation_required: true
+    )
+    client = instance_double(SolidusNexi::Nexi::Client, create_payment: created_response)
+    SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+
+    result = service.call
+
+    expect(result.payment).not_to eq(old_payment)
+    expect(old_operation.reload).to have_attributes(
+      status: "abandoned",
+      provider_code: "checkout_expired_without_provider_identity",
+      reconciliation_required: false
+    )
+    expect(old_payment.reload).to be_invalid
+    expect(client).to have_received(:create_payment).once
+  end
+
+  it "never abandons a checkout whose returned provider identity is known" do
+    payment, = create_local_checkout_intent
+    operation = create_checkout_operation(payment)
+    operation.update!(
+      status: "unknown",
+      provider_payment_id: "provider-payment-known",
+      dispatched_at: (described_class::UNKNOWN_CREATE_ABANDON_AFTER + 1.day).ago,
+      reconciliation_required: true
+    )
+    client = instance_double(SolidusNexi::Nexi::Client)
+    allow(client).to receive(:create_payment)
+    SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+
+    expect { service.call }.to raise_error(SolidusNexi::Nexi::ReconciliationRequired)
+
+    expect(operation.reload.status).to eq("unknown")
+    expect(payment.reload).not_to be_invalid
+    expect(client).not_to have_received(:create_payment)
+    expect(SolidusNexi::ReconcilePaymentJob)
+      .to have_been_enqueued.with(payment.source_id, provider_payment_id: "provider-payment-known")
+  end
+
   def create_local_checkout_intent
     source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK")
     payment = order.payments.create!(payment_method:, source:, amount: order.order_total_after_store_credit)
     [payment, source]
+  end
+
+  def create_checkout_operation(payment)
+    SolidusNexi::Operation.create_or_find_intent!(
+      payment:,
+      kind: :create,
+      logical_reference: "checkout:#{payment.number}",
+      amount_minor: 11_000,
+      currency: "SEK",
+      request_fingerprint: "f" * 64
+    )
+  end
+
+  def created_response
+    SolidusNexi::Nexi::Result.new(
+      body: JSON.parse(Rails.root.join("../fixtures/nexi/payments/created.json").read),
+      http_status: 201,
+      provider_request_id: "request-create"
+    )
   end
 end

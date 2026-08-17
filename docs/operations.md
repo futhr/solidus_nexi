@@ -18,13 +18,13 @@ Three extension-owned tables support operations:
 | `solidus_nexi_operations` | What logical mutation was requested, which idempotency key was used, and is its outcome known? |
 | `solidus_nexi_webhook_receipts` | Which event IDs were received, queued, processed, ignored, or failed? |
 
-The operation states are `pending`, `dispatched`, `succeeded`, `rejected`, `unknown`, and `reconciled`. An `unknown` operation does not mean failure. It means the request may have reached Nexi but the application cannot safely claim success or retry without following the endpoint-specific policy.
+The operation states are `pending`, `dispatched`, `succeeded`, `rejected`, `unknown`, `reconciled`, and `abandoned`. An `unknown` operation does not mean failure. It means the request may have reached Nexi but the application cannot safely claim success or retry without following the endpoint-specific policy. `abandoned` is used only for a checkout create whose provider identity is still unknown after Nexi's 48-hour checkout lifetime plus a safety margin.
 
 ## Retry policy
 
 | Operation | Provider idempotency used | Behavior after an uncertain response |
 | --- | --- | --- |
-| Create payment | No | Do not replay. Recover the Nexi payment ID from an authenticated webhook and its order reference. |
+| Create payment | No | Do not replay while the checkout can still exist. Persist any returned payment ID before local validation and recover it through retrieval. With no returned ID or webhook, abandon only after the 48-hour checkout lifetime plus five minutes. |
 | Charge | Yes | Retry only the same logical operation with the persisted key and unchanged amount. |
 | Cancel | No | Do not replay. Retrieve the payment and reconcile before another operator action. |
 | Refund | Yes | Retry only the same logical operation with the persisted key and unchanged charge/amount. |
@@ -63,13 +63,13 @@ bin/rails solidus_nexi:reconcile
 
 The task queues work; it does not perform provider calls inside the command. Make sure the Active Job backend is running.
 
-The all-sources form excludes sources without a provider payment ID. When checkout creation has an uncertain result before that ID is stored, wait for an authenticated webhook to recover it from the matching order reference. Creating a second checkout can create a second provider payment and is intentionally blocked.
+The all-sources form excludes sources without a provider payment ID. When checkout creation has an uncertain result before that ID is known, wait for an authenticated webhook to recover it from the matching order reference. If Nexi returned an ID before local persistence failed, the operation retains it and reconciliation uses that exact ID. Creating a second checkout remains blocked while the original checkout can exist.
 
 ## Incident checklist
 
 ### A checkout cannot be created
 
-Confirm that the payment method is active and available to the order's store. Check the API key, `test`/`live` setting, terms URL, public base URL, supported currency, and order total. A current unknown create operation must be reconciled rather than replaced.
+Confirm that the payment method is active and available to the order's store. Check the API key, `test`/`live` setting, terms URL, public base URL, supported currency, and order total. A current unknown create operation must be reconciled rather than replaced. If no provider identity can be recovered, a normal retry is permitted only after the recorded operation reaches the safe abandonment cutoff.
 
 ### Webhooks receive 401
 
@@ -99,4 +99,4 @@ Let the job's bounded retry policy honor the provider delay. Avoid repeatedly ru
 
 ## Current limitations
 
-The extension supports full capture, full cancellation, and full refund only. It does not implement recurring payments, payment profiles, partial financial actions, or a provider reporting interface. A Nexi checkout session is treated as reusable locally for up to 48 hours; after expiry, a new payment may be created only when no unresolved creation blocks it.
+The extension supports full capture, full cancellation, and full refund only. It does not implement recurring payments, payment profiles, partial financial actions, or a provider reporting interface. A Nexi checkout session is treated as reusable locally for up to 48 hours. An unresolved creation with no provider identity is retained for five additional minutes before it can be safely abandoned; a known provider identity must always be reconciled.

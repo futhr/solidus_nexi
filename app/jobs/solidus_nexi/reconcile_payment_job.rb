@@ -7,9 +7,9 @@ module SolidusNexi
     retry_on Nexi::RateLimitError, Nexi::ProviderUnavailableError, Nexi::TransportError,
       wait: :polynomially_longer, attempts: 5
 
-    def perform(source_id)
+    def perform(source_id, provider_payment_id: nil)
       source = PaymentSource.find(source_id)
-      ReconcilePayment.new(source:).call
+      ReconcilePayment.new(source:, provider_payment_id:).call
     end
   end
 end

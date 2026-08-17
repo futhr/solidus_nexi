@@ -26,6 +26,23 @@ RSpec.describe SolidusNexi::Operation, type: :model do
     expect(cancel).to be_valid
   end
 
+  it "records safe checkout abandonment as a terminal audit state" do
+    operation = described_class.create_or_find_intent!(**intent.merge(
+      kind: :create,
+      logical_reference: "checkout:#{payment.number}",
+      idempotency_key: nil
+    ))
+
+    operation.mark_abandoned!
+
+    expect(operation).to have_attributes(
+      status: "abandoned",
+      provider_code: "checkout_expired_without_provider_identity",
+      reconciliation_required: false
+    )
+    expect(operation.completed_at).to be_present
+  end
+
   def intent
     {
       payment:,

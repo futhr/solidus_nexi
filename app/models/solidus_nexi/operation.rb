@@ -5,7 +5,7 @@ module SolidusNexi
     self.table_name = "solidus_nexi_operations"
 
     KINDS = %w[create charge cancel refund].freeze
-    STATUSES = %w[pending dispatched succeeded rejected unknown reconciled].freeze
+    STATUSES = %w[pending dispatched succeeded rejected unknown reconciled abandoned].freeze
     IDEMPOTENT_KINDS = %w[charge refund].freeze
 
     belongs_to :payment, class_name: "Spree::Payment"
@@ -71,10 +71,11 @@ module SolidusNexi
       )
     end
 
-    def mark_unknown!(error)
+    def mark_unknown!(error, provider_payment_id: nil, provider_request_id: nil)
       update!(
         status: "unknown",
-        provider_request_id: safe_error_attribute(error, :provider_request_id),
+        provider_payment_id: provider_payment_id || self.provider_payment_id,
+        provider_request_id: provider_request_id || safe_error_attribute(error, :provider_request_id),
         provider_code: safe_error_attribute(error, :provider_code) || error.class.name,
         reconciliation_required: true
       )
@@ -93,6 +94,15 @@ module SolidusNexi
 
     def mark_reconciled!
       update!(status: "reconciled", reconciliation_required: false, completed_at: Time.current)
+    end
+
+    def mark_abandoned!
+      update!(
+        status: "abandoned",
+        provider_code: "checkout_expired_without_provider_identity",
+        reconciliation_required: false,
+        completed_at: Time.current
+      )
     end
 
     private
