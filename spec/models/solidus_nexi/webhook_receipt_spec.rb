@@ -69,6 +69,22 @@ RSpec.describe SolidusNexi::WebhookReceipt, type: :model do
     expect(receipt).to be_enqueue_required
   end
 
+  it "scopes immediate and stale recovery work without terminal receipts" do
+    failed, = described_class.record!(payment_method:, event:)
+    failed.mark_failed!(RuntimeError.new("boom"))
+    stale = failed.dup
+    stale.event_id = "event-stale"
+    stale.status = "enqueued"
+    stale.updated_at = 6.minutes.ago
+    stale.save!
+    processed = failed.dup
+    processed.event_id = "event-processed"
+    processed.status = "processed"
+    processed.save!
+
+    expect(described_class.requiring_retry).to contain_exactly(failed, stale)
+  end
+
   it "records ignored processing as a terminal acknowledgement" do
     receipt, = described_class.record!(payment_method:, event:)
     receipt.mark_ignored!

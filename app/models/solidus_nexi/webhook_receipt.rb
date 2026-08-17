@@ -12,6 +12,12 @@ module SolidusNexi
     validates :event_id, uniqueness: {scope: :payment_method_id}
     validates :status, inclusion: {in: STATUSES}
 
+    scope :requiring_retry, -> do
+      immediate = where(status: %w[received failed])
+      stale = where(status: %w[enqueued processing]).where(updated_at: ..5.minutes.ago)
+      immediate.or(stale)
+    end
+
     def self.record!(payment_method:, event:)
       receipt = create!(
         payment_method:,

@@ -62,6 +62,20 @@ RSpec.describe SolidusNexi::ProcessWebhookJob, type: :job do
     )
   end
 
+  it "honors a bounded provider Retry-After delay" do
+    allow(service).to receive(:call).and_raise(
+      SolidusNexi::Nexi::RateLimitError.new("limited", retry_after: "75")
+    )
+    before = Time.current
+
+    expect { described_class.perform_now(receipt.id) }
+      .to have_enqueued_job(described_class).with(receipt.id).at(be_within(1.second).of(before + 75.seconds))
+    expect(receipt.reload).to have_attributes(
+      status: "failed",
+      error_class: "SolidusNexi::Nexi::RateLimitError"
+    )
+  end
+
   it "does nothing when another worker owns a recent receipt" do
     receipt.update!(status: "processing")
     expect(SolidusNexi::ReconcilePayment).not_to receive(:new)

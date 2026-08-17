@@ -2,7 +2,7 @@
 
 require "rake"
 
-RSpec.describe "solidus_nexi:reconcile", type: :model do
+RSpec.describe "solidus_nexi tasks", type: :model do
   let(:task) { Rake::Task["solidus_nexi:reconcile"] }
   let(:payment_method) { SolidusNexi::PaymentMethod.create!(name: "Nexi Checkout") }
 
@@ -29,5 +29,13 @@ RSpec.describe "solidus_nexi:reconcile", type: :model do
 
     jobs = enqueued_jobs.select { |job| job[:job] == SolidusNexi::ReconcilePaymentJob }
     expect(jobs.pluck(:args)).to eq([[source.id]])
+  end
+  it "queues the webhook recovery sweep" do
+    recovery_task = Rake::Task["solidus_nexi:recover_webhooks"]
+    recovery_task.reenable
+
+    expect { recovery_task.invoke }
+      .to output("Enqueued Nexi webhook recovery sweep\n").to_stdout
+      .and have_enqueued_job(SolidusNexi::RecoverWebhookReceiptsJob)
   end
 end

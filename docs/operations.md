@@ -45,7 +45,15 @@ Webhooks are registered separately on every Nexi payment. The receiver:
 5. queues provider retrieval when work is required; and
 6. returns HTTP 200 with an empty body.
 
-Unknown event names are retained and acknowledged, then handled through the same provider-retrieval path. Failed or abandoned jobs can be queued again; processed and ignored receipts are terminal.
+Unknown event names are retained and acknowledged, then handled through the same provider-retrieval path. Failed, received, and stale processing receipts are recovered by a database-backed sweep; processed and ignored receipts are terminal.
+
+Run the recovery sweep from the host scheduler at least every five minutes:
+
+```sh
+bin/rails solidus_nexi:recover_webhooks
+```
+
+The task enqueues a background sweep; it does not process provider calls inline. Duplicate sweeps are safe. A receipt becomes eligible immediately when it is `received` or `failed`, or after five minutes in `enqueued`/`processing`. Provider `Retry-After` seconds or HTTP dates are honored between one second and one hour; malformed or missing values use 30 seconds.
 
 Deactivating a payment method blocks it from new checkout sessions but keeps its webhook endpoint available for existing payments. Deleting the payment method would remove that recovery path and should not be part of a routine cutover.
 
@@ -94,6 +102,7 @@ Let the job's bounded retry policy honor the provider delay. Avoid repeatedly ru
 - Review operations where `reconciliation_required` is true.
 - Review payment sources where `reconciliation_required` is true; this includes unexpected partial provider state and conflicts with a terminal local payment.
 - Review failed webhook receipts and confirm the job backend is healthy.
+- Alert when the webhook recovery scheduler has not completed for more than ten minutes.
 - Watch sources whose `last_reconciled_at` is unexpectedly old during an active payment.
 - Confirm that logs contain identifiers and result classes, not credentials or provider bodies.
 - Remove an expired previous webhook secret after its operational window closes.

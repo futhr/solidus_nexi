@@ -22,4 +22,10 @@ namespace :solidus_nexi do
       puts "Enqueued Nexi reconciliation for source #{source.id}"
     end
   end
+
+  desc "Queue recovery for failed or stale Nexi webhook receipts"
+  task recover_webhooks: :environment do
+    SolidusNexi::RecoverWebhookReceiptsJob.perform_later
+    puts "Enqueued Nexi webhook recovery sweep"
+  end
 end
