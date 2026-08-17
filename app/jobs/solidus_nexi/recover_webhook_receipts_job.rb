@@ -9,8 +9,8 @@ module SolidusNexi
         receipt.with_lock do
           next unless receipt.enqueue_required?
 
-          ProcessWebhookJob.perform_later(receipt.id)
           receipt.mark_enqueued!
+          ProcessWebhookJob.perform_later(receipt.id)
         end
       end
     end

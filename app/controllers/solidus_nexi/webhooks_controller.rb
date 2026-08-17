@@ -13,8 +13,8 @@ module SolidusNexi
       event = Nexi::Webhook::Parser.new.parse(request.raw_post)
       receipt, created = WebhookReceipt.record!(payment_method:, event:)
       if created || receipt.enqueue_required?
-        ProcessWebhookJob.perform_later(receipt.id)
         receipt.mark_enqueued!
+        ProcessWebhookJob.perform_later(receipt.id)
       end
 
       head :ok
