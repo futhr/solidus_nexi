@@ -1,0 +1,10 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../Gemfile", __dir__)
+
+require "bundler/setup"
+require_relative "../dev/load_env"
+
+dummy_root = File.expand_path("../spec/dummy", __dir__)
+exec File.join(dummy_root, "bin/rails"), "zeitwerk:check", chdir: dummy_root

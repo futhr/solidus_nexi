@@ -34,7 +34,7 @@ CI=1 bin/rake
 NEXI_TEST_ENVIRONMENT=1 bundle exec rspec spec/provider
 bundle exec rubocop
 bundle exec bundler-audit check --update --ignore CVE-2026-47736 CVE-2026-47737
-(cd spec/dummy && bin/rails zeitwerk:check)
+bin/zeitwerk-check
 gem build solidus_nexi.gemspec
 ruby dev/verify_package.rb solidus_nexi-*.gem
 ```

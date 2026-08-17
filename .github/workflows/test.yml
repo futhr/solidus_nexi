@@ -56,7 +56,7 @@ jobs:
       - name: Build test application
         run: bundle exec rake extension:test_app
       - name: Check eager loading
-        run: (cd spec/dummy && bin/rails zeitwerk:check)
+        run: bin/zeitwerk-check
       - name: Run test suite
         run: bundle exec rake
       - name: Upload coverage to Codecov

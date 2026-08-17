@@ -104,8 +104,13 @@ RSpec.describe SolidusNexi::CreateCheckout, type: :model do
   it "retains the returned payment ID when local checkout persistence rolls back" do
     client = instance_double(SolidusNexi::Nexi::Client, create_payment: created_response)
     SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
-    allow_any_instance_of(SolidusNexi::Operation).to receive(:mark_succeeded!)
-      .and_raise(ActiveRecord::StatementInvalid, "database unavailable")
+    transaction_calls = 0
+    allow(SolidusNexi::Operation).to receive(:transaction).and_wrap_original do |original, *arguments, &block|
+      transaction_calls += 1
+      raise ActiveRecord::StatementInvalid, "database unavailable" if transaction_calls == 2
+
+      original.call(*arguments, &block)
+    end
 
     expect { service.call }.to raise_error(SolidusNexi::Nexi::ReconciliationRequired)
 

@@ -8,6 +8,7 @@ Before opening a pull request, run:
 bin/setup
 bin/rake extension:test_app
 CI=1 bin/rake
+bin/zeitwerk-check
 bundle exec rubocop
 bundle exec bundler-audit check --update --ignore CVE-2026-47736 CVE-2026-47737
 gem build solidus_nexi.gemspec

@@ -1,31 +1,6 @@
 # frozen_string_literal: true
 
 RSpec.describe "generated Solidus Nexi initializer", type: :generator do
-  after(:context) do
-    names = %w[
-      NEXI_CHECKOUT_API_KEY NEXI_CHECKOUT_COUNTRY NEXI_CHECKOUT_ENVIRONMENT
-      NEXI_CHECKOUT_PUBLIC_BASE_URL NEXI_CHECKOUT_TERMS_URL NEXI_CHECKOUT_WEBHOOK_SECRET
-    ]
-    original = ENV.to_h.slice(*names)
-    names.each { |name| ENV.delete(name) }
-    ENV.update(
-      "NEXI_CHECKOUT_API_KEY" => "coverage-api-key",
-      "NEXI_CHECKOUT_WEBHOOK_SECRET" => "CoverageWebhookSecret123",
-      "NEXI_CHECKOUT_ENVIRONMENT" => "test",
-      "NEXI_CHECKOUT_COUNTRY" => "SWE",
-      "NEXI_CHECKOUT_PUBLIC_BASE_URL" => "https://checkout.merchant.se",
-      "NEXI_CHECKOUT_TERMS_URL" => "https://checkout.merchant.se/terms"
-    )
-    template = File.expand_path("../../../lib/generators/solidus_nexi/install/templates/initializer.rb", __dir__)
-    RSpec::Mocks.with_temporary_scope do
-      allow(Spree::Config.static_model_preferences).to receive(:add)
-      load template
-    end
-  ensure
-    names.each { |name| ENV.delete(name) }
-    original.each { |name, value| ENV[name] = value }
-  end
-
   let(:template) do
     File.expand_path("../../../lib/generators/solidus_nexi/install/templates/initializer.rb", __dir__)
   end

@@ -16,6 +16,8 @@ SimpleCov.start("rails") do
     minimum_coverage line: 94, branch: 72
     minimum_coverage_by_file 80
   end
+  # Templates are copied into the host app; their behavior is covered by generator specs.
+  add_filter %r{/lib/generators/.*/templates/}
   add_filter %r{/lib/.*/factories.rb}
   add_filter %r{/lib/.*/version.rb}
 end
