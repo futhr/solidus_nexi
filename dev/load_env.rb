@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "uri"
+require_relative "../lib/solidus_nexi/public_url"
 
 module SolidusNexi
   module DevelopmentEnvironment
@@ -67,21 +67,14 @@ module SolidusNexi
       value = environment[name].to_s
       return if value.empty? && !required
 
-      uri = URI.parse(value)
-      valid = uri.is_a?(URI::HTTPS) && uri.host && uri.userinfo.nil? && value.length <= 256
+      valid = PublicUrl.valid_https?(value, maximum_length: 256)
       errors << "#{name} must be a public HTTPS URL of at most 256 characters" unless valid
-    rescue URI::InvalidURIError
-      errors << "#{name} must be a valid HTTPS URL"
     end
 
     def self.validate_public_origin(environment, errors)
       value = environment["NEXI_CHECKOUT_PUBLIC_BASE_URL"].to_s
-      uri = URI.parse(value)
-      valid = uri.is_a?(URI::HTTPS) && uri.host && uri.userinfo.nil? && ["", "/"].include?(uri.path) &&
-        uri.query.nil? && uri.fragment.nil?
-      errors << "NEXI_CHECKOUT_PUBLIC_BASE_URL must be an HTTPS origin without a path" unless valid
-    rescue URI::InvalidURIError
-      errors << "NEXI_CHECKOUT_PUBLIC_BASE_URL must be a valid HTTPS origin"
+      valid = PublicUrl.valid_https?(value, origin: true, maximum_length: 256)
+      errors << "NEXI_CHECKOUT_PUBLIC_BASE_URL must be a public HTTPS origin without a path" unless valid
     end
 
     private_class_method :local?, :validate_master_key, :validate_present, :validate_webhook_secret,

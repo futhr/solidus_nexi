@@ -67,12 +67,15 @@ module SolidusNexi
         amount = minor(adjustment.amount)
         next if amount.zero?
 
-        tax = adjustment.tax? ? amount : 0
+        if adjustment.tax?
+          raise Nexi::ValidationError, "order-level tax adjustments cannot be serialized safely"
+        end
+
         item(
           reference: "adjustment-#{adjustment.id || adjustment.source_type.to_s.parameterize}",
           name: adjustment.label.presence || "Order adjustment",
-          net: amount - tax,
-          tax:
+          net: amount,
+          tax: 0
         )
       end
     end
@@ -90,13 +93,15 @@ module SolidusNexi
 
     def item(reference:, name:, net:, tax:)
       gross = net + tax
+      rate = tax_rate(net, tax)
+      validate_item_amounts!(net:, tax:, gross:, rate:)
       {
         reference: clean(reference, fallback: "solidus-item"),
         name: clean(name, fallback: "Solidus item"),
         quantity: 1,
         unit: "pcs",
         unitPrice: net,
-        taxRate: tax_rate(net, tax),
+        taxRate: rate,
         taxAmount: tax,
         grossTotalAmount: gross,
         netTotalAmount: net
@@ -108,9 +113,21 @@ module SolidusNexi
     end
 
     def tax_rate(net, tax)
-      return 0 unless net.positive? && tax.positive?
+      return 0 if tax.zero?
+      unless net.positive? && tax.positive?
+        raise Nexi::ValidationError, "serialized order item has an invalid tax allocation"
+      end
 
-      ((BigDecimal(tax.to_s) * 10_000) / net).round.to_i.clamp(0, 99_999)
+      ((BigDecimal(tax.to_s) * 10_000) / net).round.to_i
+    end
+
+    def validate_item_amounts!(net:, tax:, gross:, rate:)
+      if tax.negative? || (tax.positive? && !net.positive?) || rate.negative? || rate > 99_999
+        raise Nexi::ValidationError, "serialized order item has an invalid tax allocation"
+      end
+      unless gross == net + tax
+        raise Nexi::ValidationError, "serialized order item totals are inconsistent"
+      end
     end
 
     def shipment_name(shipment)

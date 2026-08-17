@@ -2,7 +2,8 @@
 
 module SolidusNexi
   class Gateway
-    def initialize(_options = {})
+    def initialize(options = {})
+      @test = !!options[:test]
     end
 
     def authorize(amount_minor, source, options = {})
@@ -84,7 +85,7 @@ module SolidusNexi
     end
 
     def success(message, authorization)
-      ActiveMerchant::Billing::Response.new(true, message, {}, authorization:, test: false)
+      ActiveMerchant::Billing::Response.new(true, message, {}, authorization:, test: @test)
     end
 
     def failure(error)
@@ -92,7 +93,7 @@ module SolidusNexi
         false,
         error.message,
         {"message" => error.message, "provider_code" => error.provider_code},
-        test: false,
+        test: @test,
         error_code: error.provider_code
       )
     end

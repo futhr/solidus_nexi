@@ -4,6 +4,7 @@ require "securerandom"
 
 require "solidus_nexi/version"
 require "solidus_nexi/configuration"
+require "solidus_nexi/public_url"
 require "solidus_nexi/nexi/canonical_json"
 require "solidus_nexi/nexi/client"
 require "solidus_nexi/nexi/payment_snapshot"

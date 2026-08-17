@@ -12,7 +12,7 @@ CI=1 bin/rake
 bundle exec rubocop
 ```
 
-`bin/check-env` prints variable names only. It requires a 32-byte `SOLIDUS_PREFERENCES_MASTER_KEY`, Test Secret API key, alphanumeric webhook secrets, supported environment/country values, HTTPS terms pages, and a pathless public HTTPS application origin. Leave `NEXI_CHECKOUT_PREVIOUS_WEBHOOK_SECRET` empty unless a secret rotation is in progress.
+`bin/check-env` prints variable names only. It requires a 32-byte `SOLIDUS_PREFERENCES_MASTER_KEY`, Test Secret API key, alphanumeric webhook secrets, supported environment/country values, public HTTPS terms pages, and a pathless public HTTPS application origin. Reserved placeholder hosts and non-public IP literals fail validation. Leave `NEXI_CHECKOUT_PREVIOUS_WEBHOOK_SECRET` empty unless a secret rotation is in progress.
 
 Normal specs block external HTTP. Provider responses under `spec/fixtures/nexi` cover API errors, financial states, asynchronous refund acceptance/completion/failure, malformed responses, duplicate webhooks, unknown outcomes, and idempotent reconciliation. System specs render the shipped Solidus storefront partial, exercise the hosted redirect handoff, and render provider state in the real Solidus admin payment page.
 

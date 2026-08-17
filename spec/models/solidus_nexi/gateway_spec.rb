@@ -11,7 +11,7 @@ RSpec.describe SolidusNexi::Gateway, type: :model do
     )
   end
   let(:payment) { create(:payment, order:, payment_method:, source:, amount: 100) }
-  let(:gateway) { described_class.new }
+  let(:gateway) { described_class.new(test: true) }
 
   it "authorizes only after retrieving the matching reservation" do
     use_provider_fixture("nexi/payments/reserved.json")
@@ -19,6 +19,7 @@ RSpec.describe SolidusNexi::Gateway, type: :model do
     response = gateway.authorize(10_000, source, originator: payment)
 
     expect(response).to be_success
+    expect(response).to be_test
     expect(response.authorization).to eq(source.provider_payment_id)
   end
 
@@ -59,6 +60,7 @@ RSpec.describe SolidusNexi::Gateway, type: :model do
 
     expect(response).not_to be_success
     expect(response.error_code).to eq("500")
+    expect(response).to be_test
   end
 
   it "delegates capture, cancellation, and refund with durable logical identities" do

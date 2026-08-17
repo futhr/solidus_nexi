@@ -29,14 +29,14 @@ RSpec.describe "Nexi hosted checkout", type: :system do
       active: true,
       preferred_api_key: "test-api-key",
       preferred_webhook_secret: "WebhookSecret123",
-      preferred_terms_url: "https://shop.example/terms"
+      preferred_terms_url: "https://checkout.merchant.se/terms"
     )
   end
 
   before do
     driven_by :rack_test
     order.store.payment_methods << payment_method
-    SolidusNexi.configuration.public_base_url = "https://shop.example"
+    SolidusNexi.configuration.public_base_url = "https://checkout.merchant.se"
     client = instance_double(SolidusNexi::Nexi::Client)
     allow(client).to receive(:create_payment).and_return(
       SolidusNexi::Nexi::Result.new(

@@ -9,6 +9,7 @@ module SolidusNexi
       order = Spree::Order.incomplete.find_by!(number: params.require(:order_number))
       authenticate_order!(order)
       payment_method = PaymentMethod.active.available_to_store(order.store).find(params.require(:payment_method_id))
+      payment_method.ready_for_checkout!
       result = create_checkout(order, payment_method)
       render_checkout(result)
     rescue ActiveRecord::RecordNotFound
@@ -59,11 +60,8 @@ module SolidusNexi
 
     def absolute_url(path)
       base = SolidusNexi.configuration.public_base_url.to_s
-      base_uri = URI.parse(base)
-      valid_origin = base_uri.is_a?(URI::HTTPS) && base_uri.host.present? && base_uri.userinfo.nil? &&
-        ["", "/"].include?(base_uri.path) && base_uri.query.nil? && base_uri.fragment.nil?
-      unless valid_origin
-        raise Nexi::ConfigurationError, "NEXI_CHECKOUT_PUBLIC_BASE_URL must be an HTTPS origin"
+      unless PublicUrl.valid_https?(base, origin: true)
+        raise Nexi::ConfigurationError, "NEXI_CHECKOUT_PUBLIC_BASE_URL must be a public HTTPS origin"
       end
 
       uri = URI.join(base.end_with?("/") ? base : "#{base}/", path.delete_prefix("/"))

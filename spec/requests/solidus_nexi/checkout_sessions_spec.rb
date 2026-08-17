@@ -3,7 +3,13 @@
 RSpec.describe "SolidusNexi checkout sessions", type: :request do
   let(:order) { create(:order, currency: "SEK") }
   let(:payment_method) do
-    SolidusNexi::PaymentMethod.create!(name: "Nexi Checkout", active: true)
+    SolidusNexi::PaymentMethod.create!(
+      name: "Nexi Checkout",
+      active: true,
+      preferred_api_key: "test-api-key",
+      preferred_webhook_secret: "WebhookSecret123",
+      preferred_terms_url: "https://checkout.merchant.se/terms"
+    )
   end
   let(:service) { instance_double(SolidusNexi::CreateCheckout) }
   let(:result) do
@@ -18,7 +24,7 @@ RSpec.describe "SolidusNexi checkout sessions", type: :request do
 
   before do
     order.store.payment_methods << payment_method
-    SolidusNexi.configuration.public_base_url = "https://shop.example"
+    SolidusNexi.configuration.public_base_url = "https://checkout.merchant.se"
   end
 
   it "requires the order guest token before creating a provider checkout" do
@@ -32,9 +38,11 @@ RSpec.describe "SolidusNexi checkout sessions", type: :request do
   it "builds public mounted URLs and returns the hosted checkout" do
     expect(SolidusNexi::CreateCheckout).to receive(:new) do |arguments|
       expect(arguments).to include(order:, payment_method:)
-      expect(arguments[:webhook_url]).to eq("https://shop.example/solidus_nexi/webhooks/#{payment_method.id}")
+      expect(arguments[:webhook_url]).to eq(
+        "https://checkout.merchant.se/solidus_nexi/webhooks/#{payment_method.id}"
+      )
       expect(arguments[:return_url_for].call(Struct.new(:return_token).new("return-token")))
-        .to eq("https://shop.example/solidus_nexi/returns/return-token")
+        .to eq("https://checkout.merchant.se/solidus_nexi/returns/return-token")
       service
     end
     allow(service).to receive(:call).and_return(result)
@@ -51,7 +59,7 @@ RSpec.describe "SolidusNexi checkout sessions", type: :request do
   end
 
   it "rejects a public base URL that is not an HTTPS origin" do
-    SolidusNexi.configuration.public_base_url = "https://shop.example/store?tenant=one"
+    SolidusNexi.configuration.public_base_url = "https://checkout.merchant.se/store?tenant=one"
     expect(SolidusNexi::CreateCheckout).not_to receive(:new)
 
     post checkout_path, params: checkout_params, as: :json

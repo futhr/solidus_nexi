@@ -16,6 +16,31 @@ RSpec.describe SolidusNexi::PaymentMethod, type: :model do
     expect(payment_method).not_to be_payment_profiles_supported
   end
 
+  it "supports only its own Nexi payment sources" do
+    payment_method.save!
+    other_method = described_class.create!(name: "Other Nexi Checkout")
+    own_source = SolidusNexi::PaymentSource.new(payment_method:, currency: "SEK")
+    other_source = SolidusNexi::PaymentSource.new(payment_method: other_method, currency: "SEK")
+
+    expect(payment_method.supports?(own_source)).to be(true)
+    expect(payment_method.supports?(other_source)).to be(false)
+    expect(payment_method.supports?(Object.new)).to be(false)
+  end
+
+  it "checks every required checkout preference before creating local payment state" do
+    expect { payment_method.ready_for_checkout! }
+      .to raise_error(SolidusNexi::Nexi::ConfigurationError, /api_key.*webhook_secret.*terms_url/)
+
+    payment_method.preferred_api_key = "test-api-key"
+    payment_method.preferred_webhook_secret = "WebhookSecret123"
+    payment_method.preferred_terms_url = "https://checkout.merchant.se/terms"
+    expect(payment_method.ready_for_checkout!).to eq(payment_method)
+
+    payment_method.preferred_merchant_terms_url = "https://shop.example/privacy"
+    expect { payment_method.ready_for_checkout! }
+      .to raise_error(SolidusNexi::Nexi::ConfigurationError, /merchant_terms_url/)
+  end
+
   it "never exposes encrypted credentials in the generic admin form" do
     expect(payment_method.admin_form_preference_names)
       .not_to include(:api_key, :webhook_secret, :previous_webhook_secret)

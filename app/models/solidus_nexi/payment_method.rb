@@ -38,6 +38,10 @@ module SolidusNexi
       false
     end
 
+    def supports?(source)
+      source.is_a?(PaymentSource) && source.payment_method == self
+    end
+
     def admin_form_preference_names
       super - %i[api_key webhook_secret previous_webhook_secret]
     end
@@ -56,6 +60,22 @@ module SolidusNexi
 
     def nexi_environment
       (preferred_server == "production" && !preferred_test_mode) ? :live : :test
+    end
+
+    def ready_for_checkout!
+      missing = []
+      missing << "api_key" if preferred_api_key.blank?
+      missing << "webhook_secret" unless WEBHOOK_SECRET.match?(preferred_webhook_secret.to_s)
+      missing << "checkout_country" unless /\A[A-Z]{3}\z/.match?(preferred_checkout_country.to_s)
+      missing << "terms_url" unless PublicUrl.valid_https?(preferred_terms_url)
+      if preferred_merchant_terms_url.present? && !PublicUrl.valid_https?(preferred_merchant_terms_url)
+        missing << "merchant_terms_url"
+      end
+      if missing.any?
+        raise Nexi::ConfigurationError, "Nexi payment method is not checkout-ready: #{missing.join(", ")}"
+      end
+
+      self
     end
 
     private

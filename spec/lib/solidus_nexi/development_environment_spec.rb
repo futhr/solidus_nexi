@@ -69,6 +69,20 @@ RSpec.describe SolidusNexi::DevelopmentEnvironment do
     }
   end
 
+  it "rejects placeholder hosts and private literal addresses" do
+    %w[
+      https://shop.example/terms
+      https://merchant.example.com/terms
+      https://127.0.0.1/terms
+      https://10.0.0.1/terms
+      https://[::1]/terms
+    ].each do |url|
+      environment = valid_environment.merge("NEXI_CHECKOUT_TERMS_URL" => url)
+      expect { described_class.validate!(environment:) }
+        .to raise_error(ArgumentError, /NEXI_CHECKOUT_TERMS_URL/)
+    end
+  end
+
   def valid_environment
     {
       "SOLIDUS_PREFERENCES_MASTER_KEY" => "0123456789abcdef0123456789abcdef",
@@ -77,9 +91,9 @@ RSpec.describe SolidusNexi::DevelopmentEnvironment do
       "NEXI_CHECKOUT_PREVIOUS_WEBHOOK_SECRET" => "",
       "NEXI_CHECKOUT_ENVIRONMENT" => "test",
       "NEXI_CHECKOUT_COUNTRY" => "SWE",
-      "NEXI_CHECKOUT_TERMS_URL" => "https://shop.example/terms",
-      "NEXI_CHECKOUT_MERCHANT_TERMS_URL" => "https://shop.example/privacy",
-      "NEXI_CHECKOUT_PUBLIC_BASE_URL" => "https://shop.example"
+      "NEXI_CHECKOUT_TERMS_URL" => "https://checkout.merchant.se/terms",
+      "NEXI_CHECKOUT_MERCHANT_TERMS_URL" => "https://checkout.merchant.se/privacy",
+      "NEXI_CHECKOUT_PUBLIC_BASE_URL" => "https://checkout.merchant.se"
     }
   end
 end

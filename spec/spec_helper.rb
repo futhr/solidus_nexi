@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "../dev/load_env"
-
 ENV["RAILS_ENV"] = "test"
 ENV["SOLIDUS_PREFERENCES_MASTER_KEY"] ||= "0123456789abcdef0123456789abcdef"
 
@@ -22,6 +20,8 @@ SimpleCov.start("rails") do
   add_filter %r{/lib/.*/factories.rb}
   add_filter %r{/lib/.*/version.rb}
 end
+
+require_relative "../dev/load_env"
 
 dummy_environment = "#{__dir__}/dummy/config/environment.rb"
 system("bin/rake", "extension:test_app") unless File.exist?(dummy_environment)

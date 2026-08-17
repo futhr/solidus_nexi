@@ -97,7 +97,7 @@ The generated initializer can register an environment-backed preference source. 
 | `NEXI_CHECKOUT_MERCHANT_TERMS_URL` | No | — | Public HTTPS privacy and cookie page. |
 | `NEXI_CHECKOUT_PUBLIC_BASE_URL` | Yes | — | HTTPS origin where the mounted return and webhook routes are reachable. |
 
-Development and test commands load the repository-root `.env` without overwriting variables already exported by the shell. Staging and production never load it. See [.env.example](.env.example) for the complete template. Supplying both the API key and current webhook secret activates the generated static preference source; at that point the terms URL must also be present.
+Development and test commands load the repository-root `.env` without overwriting variables already exported by the shell. Staging and production never load it. See [.env.example](.env.example) for the complete template; its `.example` URLs are deliberately non-runnable and must be replaced. `bin/check-env` rejects reserved names and private, loopback, link-local, and documentation IP literals. Supplying both the API key and current webhook secret activates the generated static preference source; at that point the terms URL must also be present.
 
 Create a `SolidusNexi::PaymentMethod` in the Solidus admin, associate it with the intended stores, and select the `nexi_checkout_env_credentials` preference source. Solidus's `auto_capture` setting controls whether the checkout asks Nexi to charge immediately after reservation. Secret preferences are deliberately absent from the generic admin form.
 
