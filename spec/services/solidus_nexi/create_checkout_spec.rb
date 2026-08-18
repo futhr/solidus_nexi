@@ -47,6 +47,61 @@ RSpec.describe SolidusNexi::CreateCheckout, type: :model do
       .to eq(requests.first.dig(:order, :amount))
     expect(SolidusNexi::Operation.find_by!(payment: first.payment, kind: "create"))
       .to have_attributes(status: "succeeded", idempotency_key: nil)
+    expect(first.source.checkout_context_fingerprint).to match(/\A[0-9a-f]{64}\z/)
+  end
+
+  it "blocks a same-total checkout after its canonical order context changes" do
+    client = instance_double(SolidusNexi::Nexi::Client, create_payment: created_response)
+    SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+    first = service.call
+
+    order.line_items.first.variant.product.update!(name: "A materially different item")
+
+    expect { service.call }
+      .to raise_error(SolidusNexi::Nexi::ReconciliationRequired, /no longer matches the order/)
+    expect(first.source.reload).to have_attributes(
+      provider_status: "checkout_context_stale",
+      reconciliation_required: true
+    )
+    expect(client).to have_received(:create_payment).once
+  end
+
+  it "replaces a hosted checkout only after its provider lifetime and safety margin" do
+    calls = 0
+    client = instance_double(SolidusNexi::Nexi::Client)
+    allow(client).to receive(:create_payment) do
+      calls += 1
+      response = created_response
+      response.body["paymentId"] = "provider-payment-#{calls}"
+      response
+    end
+    SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+    first = service.call
+    first.source.update!(checkout_expires_at: 6.minutes.ago)
+
+    second = service.call
+
+    expect(first.payment.reload).to be_invalid
+    expect(first.source.reload).to have_attributes(
+      hosted_payment_page_url: nil,
+      provider_status: "checkout_expired",
+      reconciliation_required: false
+    )
+    expect(second.payment).not_to eq(first.payment)
+  end
+
+  it "persists a reconciliation warning when replacement is not yet safe" do
+    client = instance_double(SolidusNexi::Nexi::Client, create_payment: created_response)
+    SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+    first = service.call
+    first.source.update!(checkout_expires_at: 1.minute.ago)
+
+    expect { service.call }
+      .to raise_error(SolidusNexi::Nexi::ReconciliationRequired, /not safe to replace/)
+    expect(first.source.reload).to have_attributes(
+      provider_status: "checkout_replacement_blocked",
+      reconciliation_required: true
+    )
   end
 
   it "blocks a new create after an ambiguous response" do

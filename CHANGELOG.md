@@ -31,6 +31,7 @@ Notable user-facing changes are recorded here. The current `solidus_nexi` rewrit
 - Prevent late webhooks from regressing terminal payment state or applying to the wrong checkout.
 - Reject invalid tax allocations, unsupported money values, and unsafe public URLs before provider dispatch.
 - Match Solidus foreign-key widths on MySQL.
+- Bind hosted checkout reuse and reconciliation to the exact serialized order context, even when totals match.
 
 ### Security
 

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "digest"
-require "uri"
 
 module SolidusNexi
   class CreateCheckout
@@ -18,6 +17,7 @@ module SolidusNexi
     end
 
     def call
+      @payment_amount = nil
       @returned_provider_payment_id = nil
       @provider_request_id = nil
       @unresolved_operation = nil
@@ -40,13 +40,13 @@ module SolidusNexi
 
     def complete_checkout(payment, source, payload, operation)
       response = client.create_payment(payload:)
-      @returned_provider_payment_id = response_identifier!(response, "paymentId")
+      @returned_provider_payment_id = CheckoutResponse.payment_id!(response)
       @provider_request_id = response.provider_request_id
       operation.update!(
         provider_payment_id: @returned_provider_payment_id,
         provider_request_id: @provider_request_id
       )
-      hosted_url = validate_hosted_url!(response["hostedPaymentPageUrl"])
+      hosted_url = CheckoutResponse.hosted_url!(response["hostedPaymentPageUrl"])
 
       Operation.transaction do
         source.update!(
@@ -72,9 +72,15 @@ module SolidusNexi
     end
 
     def prepare_local_operation
-      @order.with_lock do
+      prepared = @order.with_lock do
         @order.reload
-        if (existing = reusable_checkout)
+        context_fingerprint = checkout_context_fingerprint
+        availability = CheckoutAvailability.new(
+          payments: current_payments.to_a,
+          amount: payment_amount,
+          context_fingerprint:
+        ).call
+        if (existing = availability.payment)
           return Result.new(
             payment: existing,
             source: existing.source,
@@ -83,9 +89,10 @@ module SolidusNexi
             reused: true
           )
         end
+        next availability.error if availability.error
 
         reject_unresolved_create!
-        payment, source = persist_local_intent
+        payment, source = persist_local_intent(context_fingerprint)
         payload = checkout_payload(payment, source)
         operation = create_operation(payment, payload)
         unless operation.claim_dispatch!
@@ -94,12 +101,15 @@ module SolidusNexi
 
         [payment, source, payload, operation]
       end
-    end
 
-    def reusable_checkout
-      current_payments.find do |payment|
-        payment.amount == payment_amount && payment.source.checkout_open?
+      case prepared
+      when :stale_checkout
+        raise Nexi::ReconciliationRequired,
+          "an open Nexi checkout no longer matches the order; wait for safe expiry before replacing it"
+      when :replacement_blocked
+        raise Nexi::ReconciliationRequired, "the previous Nexi checkout is not safe to replace"
       end
+      prepared
     end
 
     def reject_unresolved_create!
@@ -183,8 +193,12 @@ module SolidusNexi
         .order(created_at: :desc)
     end
 
-    def persist_local_intent
-      source = PaymentSource.create!(payment_method: @payment_method, currency: @order.currency)
+    def persist_local_intent(context_fingerprint)
+      source = PaymentSource.create!(
+        payment_method: @payment_method,
+        currency: @order.currency,
+        checkout_context_fingerprint: context_fingerprint
+      )
       payment = @order.payments.create!(
         payment_method: @payment_method,
         source:,
@@ -195,6 +209,10 @@ module SolidusNexi
 
     def payment_amount
       @payment_amount ||= @order.order_total_after_store_credit
+    end
+
+    def checkout_context_fingerprint
+      CheckoutContext.fingerprint(order: @order, amount: payment_amount, currency: @order.currency)
     end
 
     def checkout_payload(payment, source)
@@ -224,31 +242,6 @@ module SolidusNexi
       end
 
       operation
-    end
-
-    def validate_hosted_url!(value)
-      uri = URI.parse(value.to_s)
-      valid_host = uri.host == "checkout.dibspayment.eu" || uri.host == "test.checkout.dibspayment.eu" ||
-        uri.host&.end_with?(".checkout.dibspayment.eu")
-      unless uri.is_a?(URI::HTTPS) && valid_host && uri.userinfo.nil? && uri.to_s.length <= 2048
-        raise Nexi::MalformedResponseError, "Nexi returned an invalid hosted checkout URL"
-      end
-
-      uri.to_s
-    rescue URI::InvalidURIError
-      raise Nexi::MalformedResponseError, "Nexi returned an invalid hosted checkout URL"
-    end
-
-    def response_identifier!(response, key)
-      value = response[key].to_s
-      unless Nexi::Client::IDENTIFIER.match?(value)
-        raise Nexi::MalformedResponseError.new(
-          "Nexi response contains an invalid #{key}",
-          provider_request_id: response.provider_request_id
-        )
-      end
-
-      value
     end
 
     def client

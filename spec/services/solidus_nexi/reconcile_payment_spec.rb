@@ -25,6 +25,7 @@ RSpec.describe SolidusNexi::ReconcilePayment, type: :model do
   it "recovers a create response lost before the provider ID was stored" do
     source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK")
     payment = create(:payment, order:, payment_method:, source:, amount: 100)
+    source.update!(checkout_context_fingerprint: checkout_context_for(payment))
     operation = SolidusNexi::Operation.create_or_find_intent!(
       payment:,
       kind: :create,
@@ -47,6 +48,51 @@ RSpec.describe SolidusNexi::ReconcilePayment, type: :model do
     expect(source.reload.provider_payment_id).to eq(provider_payment_id)
     expect(payment.reload).to be_pending
     expect(operation.reload.status).to eq("reconciled")
+  end
+
+  it "rejects late webhook reconciliation after the checkout context changes" do
+    source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK", provider_payment_id:)
+    payment = create(:payment, order:, payment_method:, source:, amount: 100)
+    source.update!(checkout_context_fingerprint: checkout_context_for(payment))
+    SolidusNexi::Operation.create_or_find_intent!(
+      payment:,
+      kind: :create,
+      logical_reference: "checkout:#{payment.number}",
+      amount_minor: 10_000,
+      currency: "SEK",
+      request_fingerprint: "f" * 64
+    )
+    order.update!(number: "changed-locally")
+    use_provider_fixture("nexi/payments/reserved.json", order:)
+
+    expect { described_class.new(source:, event_name: "payment.created").call }
+      .to raise_error(SolidusNexi::Nexi::ConflictError)
+    expect(source.reload).to have_attributes(
+      provider_status: "checkout_context_conflict",
+      reconciliation_required: true
+    )
+    expect(payment.reload).to be_checkout
+  end
+
+  it "requires manual reconciliation for a legacy checkout without a context fingerprint" do
+    source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK", provider_payment_id:)
+    payment = create(:payment, order:, payment_method:, source:, amount: 100)
+    SolidusNexi::Operation.create_or_find_intent!(
+      payment:,
+      kind: :create,
+      logical_reference: "checkout:#{payment.number}",
+      amount_minor: 10_000,
+      currency: "SEK",
+      request_fingerprint: "f" * 64
+    )
+    use_provider_fixture("nexi/payments/reserved.json", order:)
+
+    expect { described_class.new(source:).call }
+      .to raise_error(SolidusNexi::Nexi::ReconciliationRequired, /predates canonical/)
+    expect(source.reload).to have_attributes(
+      provider_status: "checkout_context_missing",
+      reconciliation_required: true
+    )
   end
 
   it "reconciles the exact provider payment when a newer checkout exists" do
@@ -343,6 +389,14 @@ RSpec.describe SolidusNexi::ReconcilePayment, type: :model do
   end
 
   private
+
+  def checkout_context_for(payment)
+    SolidusNexi::CheckoutContext.fingerprint(
+      order: payment.order,
+      amount: payment.amount,
+      currency: payment.currency
+    )
+  end
 
   def use_provider_fixture(path, **attributes)
     body = JSON.parse(Rails.root.join("..", "fixtures", path).read)

@@ -25,6 +25,7 @@ module SolidusNexi
 
       payment = payment_for(@source)
       validate_order!(payment, snapshot)
+      CheckoutContext.verify!(payment:, source: @source)
       amounts = snapshot.amounts
       mapping = initial_mapping(snapshot)
 

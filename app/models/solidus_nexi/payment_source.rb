@@ -9,6 +9,7 @@ module SolidusNexi
     validates :currency, inclusion: {in: Nexi::Money::SUPPORTED_CURRENCIES}
     validates :return_token, presence: true, uniqueness: true
     validates :provider_payment_id, uniqueness: {scope: :payment_method_id}, allow_nil: true
+    validates :checkout_context_fingerprint, format: {with: /\A[0-9a-f]{64}\z/}, allow_nil: true
     validates :reserved_amount_minor, :charged_amount_minor, :refunded_amount_minor,
       :cancelled_amount_minor, numericality: {only_integer: true, greater_than_or_equal_to: 0}
 

@@ -91,7 +91,7 @@ sequenceDiagram
   Controller-->>Customer: 303 hosted redirect or JSON response
 ```
 
-Checkout creation is serialized under the order lock. An existing unexpired hosted page is reused. A create request has no Nexi idempotency key, so an uncertain result blocks another checkout until the original is recovered or its 48-hour provider lifetime plus safety margin has elapsed.
+Checkout creation is serialized under the order lock. An existing unexpired hosted page is reused only when its amount and canonical serialized order context still match. A same-total change to item identity, description, tax allocation, or shipping blocks the stale page and late reconciliation until it expires safely. A create request has no Nexi idempotency key, so an uncertain result blocks another checkout until the original is recovered or its 48-hour provider lifetime plus safety margin has elapsed.
 
 ## Return and webhook reconciliation
 
