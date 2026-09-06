@@ -102,6 +102,34 @@ RSpec.describe SolidusNexi::Gateway, type: :model do
       .to raise_error(Spree::Core::GatewayError, /refund originator/)
   end
 
+  %w[cancelled refunded partially_refunded refund_pending].each do |state|
+    it "refuses authorization and purchase for a #{state} payment" do
+      use_provider_fixture("nexi/payments/#{state}.json")
+
+      expect(gateway.authorize(10_000, source, originator: payment)).not_to be_success
+      expect(gateway.purchase(10_000, source, originator: payment)).not_to be_success
+    end
+  end
+
+  it "refuses a provider amount that differs from the local payment" do
+    payment.update!(amount: 90)
+    use_provider_fixture("nexi/payments/charged.json")
+
+    expect(gateway.purchase(10_000, source, originator: payment)).not_to be_success
+  end
+
+  it "checks the order context before accepting a provider payment" do
+    SolidusNexi::Operation.create_or_find_intent!(
+      payment:, kind: :create, logical_reference: "checkout:#{payment.number}",
+      amount_minor: 10_000, currency: "SEK", request_fingerprint: "f" * 64
+    )
+    source.update!(checkout_context_fingerprint: "0" * 64)
+    use_provider_fixture("nexi/payments/charged.json")
+
+    expect(gateway.purchase(10_000, source, originator: payment)).not_to be_success
+    expect(source.reload).to have_attributes(reconciliation_required: true, provider_status: "checkout_context_conflict")
+  end
+
   private
 
   def use_provider_fixture(path, order_reference: order.number)

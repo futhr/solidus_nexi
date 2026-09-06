@@ -59,19 +59,33 @@ module SolidusNexi
         return failure(Nexi::ValidationError.new("Nexi checkout has not been created"))
       end
 
+      CheckoutContext.verify!(payment:, source:)
       response = client_for(payment).retrieve_payment(payment_id: source.provider_payment_id)
       snapshot = Nexi::PaymentSnapshot.new(response.body, expected_payment_id: source.provider_payment_id)
-      amounts = snapshot.amounts
-      provider_matches = snapshot.amount_minor == amount_minor &&
-        snapshot.currency == payment.currency &&
-        snapshot.order_reference == OrderSerializer.order_reference(payment.order.number)
-      if payment.source == source && provider_matches && amounts.fetch(required_amount) >= amount_minor
+      Nexi::Money.validate_minor!(amount_minor)
+      if payment.source == source && provider_matches?(snapshot, payment, amount_minor) &&
+          financially_complete?(snapshot, amount_minor, required_amount)
         success("Nexi payment verified", source.provider_payment_id)
       else
         failure(Nexi::ReconciliationRequired.new("Nexi payment is not financially complete"))
       end
     rescue Nexi::Error => error
       failure(error)
+    end
+
+    def provider_matches?(snapshot, payment, amount_minor)
+      snapshot.amount_minor == amount_minor &&
+        amount_minor == Nexi::Money.to_minor(payment.amount, payment.currency) &&
+        (snapshot.my_reference.blank? || snapshot.my_reference == payment.number) &&
+        snapshot.currency == payment.currency &&
+        snapshot.order_reference == OrderSerializer.order_reference(payment.order.number)
+    end
+
+    def financially_complete?(snapshot, amount_minor, required_amount)
+      mapping = Nexi::StateMapper.new.map(summary: snapshot.summary, expected_amount_minor: snapshot.amount_minor)
+      snapshot.amounts.fetch(required_amount) == amount_minor &&
+        mapping.reason == ((required_amount == :reserved) ? "reserved" : "charged") &&
+        snapshot.refund_id_with_state(:pending, :initiated).nil?
     end
 
     def payment_from(options)
