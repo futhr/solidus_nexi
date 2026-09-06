@@ -19,20 +19,25 @@ module SolidusNexi
     end
 
     def self.record!(payment_method:, event:)
-      receipt = create!(
-        payment_method:,
-        event_id: event.id,
-        event_name: event.name,
-        provider_payment_id: event.payment_id,
-        provider_charge_id: event.charge_id,
-        provider_refund_id: event.refund_id,
-        order_reference: event.order_reference,
-        merchant_id: event.merchant_id,
-        occurred_at: event.occurred_at
-      )
+      receipt = transaction(requires_new: true) do
+        create!(
+          payment_method:,
+          event_id: event.id,
+          event_name: event.name,
+          provider_payment_id: event.payment_id,
+          provider_charge_id: event.charge_id,
+          provider_refund_id: event.refund_id,
+          order_reference: event.order_reference,
+          merchant_id: event.merchant_id,
+          occurred_at: event.occurred_at
+        )
+      end
       [receipt, true]
     rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
-      [find_by!(payment_method:, event_id: event.id), false]
+      existing = find_by(payment_method:, event_id: event.id)
+      raise unless existing
+
+      [existing, false]
     end
 
     def claim_processing!

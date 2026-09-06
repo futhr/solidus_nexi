@@ -25,15 +25,17 @@ module SolidusNexi
       existing = find_by(payment:, kind: kind.to_s, logical_reference:)
       return existing if existing
 
-      create!(
-        payment:,
-        kind: kind.to_s,
-        logical_reference:,
-        amount_minor:,
-        currency: currency.to_s.upcase,
-        request_fingerprint:,
-        idempotency_key:
-      )
+      transaction(requires_new: true) do
+        create!(
+          payment:,
+          kind: kind.to_s,
+          logical_reference:,
+          amount_minor:,
+          currency: currency.to_s.upcase,
+          request_fingerprint:,
+          idempotency_key:
+        )
+      end
     rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
       find_by(payment:, kind: kind.to_s, logical_reference:) || raise
     end

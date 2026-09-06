@@ -25,6 +25,23 @@ RSpec.describe SolidusNexi::WebhookReceipt, type: :model do
     expect(second).to eq(first)
   end
 
+  it "recovers a duplicate insert without aborting its caller's transaction" do
+    existing, = described_class.record!(payment_method:, event:)
+    allow(described_class).to receive(:create!) do |attributes|
+      described_class.new(attributes).save!(validate: false)
+    end
+
+    described_class.transaction do
+      expect(described_class.record!(payment_method:, event:)).to eq([existing, false])
+      expect(described_class.count).to eq(1)
+    end
+  end
+
+  it "preserves validation errors that are not duplicate events" do
+    expect { described_class.record!(payment_method:, event: event.with(merchant_id: nil)) }
+      .to raise_error(ActiveRecord::RecordInvalid)
+  end
+
   it "retains operation identifiers needed for exact failure reconciliation" do
     refund_event = event.with(
       name: "payment.refund.failed",

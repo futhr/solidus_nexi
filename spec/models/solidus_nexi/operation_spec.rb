@@ -43,6 +43,20 @@ RSpec.describe SolidusNexi::Operation, type: :model do
     expect(operation.completed_at).to be_present
   end
 
+  it "recovers a uniqueness race without aborting its caller's transaction" do
+    existing = described_class.create_or_find_intent!(**intent)
+    allow(described_class).to receive(:find_by).and_return(nil, existing)
+    # Skip model validation to exercise the database constraint, as in a concurrent insert.
+    allow(described_class).to receive(:create!) do |attributes|
+      described_class.new(attributes).save!(validate: false)
+    end
+
+    described_class.transaction do
+      expect(described_class.create_or_find_intent!(**intent)).to eq(existing)
+      expect(described_class.count).to eq(1)
+    end
+  end
+
   def intent
     {
       payment:,
