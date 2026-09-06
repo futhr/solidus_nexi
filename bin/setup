@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ruby -S bundle config set --local path .bundle
-ruby -S bundle install
+bundle config set --local path .bundle
+bundle install
 
 if [[ ! -f .env ]]; then
   cp .env.example .env

@@ -8,8 +8,7 @@ RSpec.describe "release task", type: :model do
     output, error, process = Open3.capture3(
       {"BUNDLE_GEMFILE" => File.join(repository, "Gemfile")},
       Gem.ruby,
-      "-S",
-      "bundle",
+      Gem.bin_path("bundler", "bundle"),
       "exec",
       "rake",
       "release",
