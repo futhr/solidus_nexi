@@ -112,9 +112,7 @@ module SolidusNexi
     end
 
     def reject_unresolved_create!
-      unresolved = current_payments.filter_map do |payment|
-        Operation.where(payment:, kind: "create", status: %w[pending dispatched unknown]).first
-      end
+      unresolved = Operation.where(payment: current_payments, kind: "create", status: %w[pending dispatched unknown])
 
       unresolved.each do |operation|
         if safely_abandonable?(operation)

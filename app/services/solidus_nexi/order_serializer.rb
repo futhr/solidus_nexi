@@ -24,10 +24,6 @@ module SolidusNexi
       items = line_items + shipment_items + order_adjustment_items
       append_balance_item!(items, expected_amount - items.sum { |item| item.fetch(:grossTotalAmount) })
 
-      unless items.sum { |item| item.fetch(:grossTotalAmount) } == expected_amount
-        raise Nexi::ValidationError, "serialized order items do not equal the payment amount"
-      end
-
       {
         items:,
         amount: expected_amount,
@@ -94,7 +90,7 @@ module SolidusNexi
     def item(reference:, name:, net:, tax:)
       gross = net + tax
       rate = tax_rate(net, tax)
-      validate_item_amounts!(net:, tax:, gross:, rate:)
+      validate_item_amounts!(net:, tax:, rate:)
       {
         reference: clean(reference, fallback: "solidus-item"),
         name: clean(name, fallback: "Solidus item"),
@@ -121,12 +117,9 @@ module SolidusNexi
       ((BigDecimal(tax.to_s) * 10_000) / net).round.to_i
     end
 
-    def validate_item_amounts!(net:, tax:, gross:, rate:)
+    def validate_item_amounts!(net:, tax:, rate:)
       if tax.negative? || (tax.positive? && !net.positive?) || rate.negative? || rate > 99_999
         raise Nexi::ValidationError, "serialized order item has an invalid tax allocation"
-      end
-      unless gross == net + tax
-        raise Nexi::ValidationError, "serialized order item totals are inconsistent"
       end
     end
 
