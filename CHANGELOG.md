@@ -20,7 +20,7 @@ Notable user-facing changes are recorded here. The current `solidus_nexi` rewrit
 - Replaced the historical `spree_dibs` extension with the `solidus_nexi` gem and `SolidusNexi` namespace.
 - Moved payment-detail collection entirely to Nexi's hosted checkout.
 - Limited financial mutations to full amounts until exact partial item allocation can be guaranteed.
-- Required the maintained Rails 7.2 line and patched Rails releases.
+- Support Rails 7.2, 8.0, and 8.1; use published Solidus 4.7 and Rails 8.1 for development.
 
 ### Fixed
 
@@ -32,6 +32,16 @@ Notable user-facing changes are recorded here. The current `solidus_nexi` rewrit
 - Reject invalid tax allocations, unsupported money values, and unsafe public URLs before provider dispatch.
 - Match Solidus foreign-key widths on MySQL.
 - Bind hosted checkout reuse and reconciliation to the exact serialized order context, even when totals match.
+
+- Reject fractional, non-finite, and malformed provider amounts and operation collections.
+- Reject cancelled, refunded, and mismatched payments during gateway verification.
+- Preserve malformed cancellation and TLS failures as uncertain mutation outcomes.
+- Validate recovered payment identities before binding them and retry stale financial snapshots.
+- Recover stale dispatched operations and checkout IDs retained only on operation records.
+- Handle cancelled and expired refunds, keeping a later pending refund visible after an earlier failure.
+- Isolate duplicate inserts in savepoints so PostgreSQL can recover within an existing transaction.
+- Require post-expiry financial verification before replacing a checkout; never abandon a dispatched unknown payment on elapsed time alone.
+- Exclude hidden files and symlinks from gems and verify packaged metadata and file bytes.
 
 ### Security
 

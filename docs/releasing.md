@@ -1,6 +1,6 @@
 # Releasing `solidus_nexi`
 
-This runbook separates verification from actions that change GitHub or RubyGems. Never create or push a release tag, GitHub release, or gem without explicit release approval.
+The current candidate is `0.1.0.alpha.1`. It remains unreleased. Build and inspect it locally before choosing a publication date. Tagging, pushing, and publication need a separate maintainer release decision.
 
 The top-level `rake release` task is disabled because Bundler's default task combines tagging, pushing, and publication.
 
@@ -9,6 +9,7 @@ The top-level `rake release` task is disabled because Bundler's default task com
 - Confirm that the `solidus_nexi` name is available and configure its pending trusted publisher or establish ownership on RubyGems.
 - Enable MFA for the RubyGems account. Keep `rubygems_mfa_required` and the RubyGems-only push host in the gemspec.
 - Confirm the repository metadata, security contact, and license.
+- Review the [release audit](audit-2026-09-06.md) and its remaining checks.
 - Complete the merchant TEST lifecycle in [Testing](testing.md), including hosted card entry, webhooks, capture, cancellation, refund, failure cards, and repeated reconciliation.
 - Verify the Codecov project and the complete GitHub Actions matrix.
 
@@ -33,13 +34,13 @@ bin/rake extension:test_app
 CI=1 bin/rake
 NEXI_TEST_ENVIRONMENT=1 bundle exec rspec spec/provider
 bundle exec rubocop
-bundle exec bundler-audit check --update --ignore CVE-2026-47736 CVE-2026-47737
+bundle exec bundler-audit check --update
 bin/zeitwerk-check
 gem build solidus_nexi.gemspec
-ruby dev/verify_package.rb solidus_nexi-*.gem
+ruby dev/verify_package.rb solidus_nexi-0.1.0.alpha.1.gem
 ```
 
-The ignored Puma advisories apply only to the development server pulled in by `solidus_dev_support`; Puma is not a runtime dependency. Remove the exceptions when that helper accepts a patched Puma version.
+The two Puma exceptions are documented in `../.bundler-audit.yml`. They affect the development helper and require opt-in PROXY protocol v1. Puma is not a runtime dependency of this gem. Remove the exceptions when the helper accepts a patched version. Run `bundle exec bundler-audit check --config /dev/null` to inspect the unfiltered result.
 
 Inspect the gem metadata and calculate the checksum without changing external state:
 

@@ -15,9 +15,11 @@ This is an unreleased rewrite of `spree_dibs` under the `SolidusNexi` namespace.
 | Component | Supported |
 | --- | --- |
 | Solidus | 4.7; 4.6 as a secondary target |
-| Rails | 7.2 |
+| Rails | 7.2, 8.0, 8.1 |
 | Ruby | 3.2–4.0 |
 | Databases | SQLite, PostgreSQL, MySQL |
+
+Development defaults to published Solidus 4.7 and Rails 8.1. Ruby 3.2 and Rails 7.2 remain compatibility targets. For a new store, use maintained releases; check the [Ruby branch status](https://www.ruby-lang.org/en/downloads/branches/) and [Rails maintenance policy](https://guides.rubyonrails.org/maintenance_policy.html).
 
 The gem supports hosted one-time payments, authorization, optional auto-capture, full capture, full cancellation, full refund, authenticated webhooks, and reconciliation. It supports CHF, CZK, DKK, EUR, GBP, NOK, PLN, SEK, and USD.
 
@@ -58,7 +60,7 @@ The provider contract creates and retrieves one uncompleted 100 SEK TEST checkou
 
 A complete hosted-card test is different: Nexi must be able to reach the engine's webhook route, so the local app needs a public HTTPS tunnel. `NEXI_CHECKOUT_TERMS_URL` is a required Nexi checkout field; in TEST it may point to a sandbox page. A real merchant terms page is needed only when preparing the live store.
 
-Run `bin/check-env` when testing the complete hosted flow. It deliberately rejects placeholder and private URLs. The release checklist is in [Testing](docs/testing.md).
+Run `bin/check-env` when testing the complete hosted flow. It rejects placeholder and private URLs. The release checklist is in [Testing](docs/testing.md).
 
 ## Storefront
 
@@ -109,8 +111,10 @@ bin/rake extension:test_app
 CI=1 bin/rake
 bin/zeitwerk-check
 bundle exec rubocop
-bundle exec bundler-audit check --update --ignore CVE-2026-47736 CVE-2026-47737
+bundle exec bundler-audit check --update
 ```
+
+The dependency audit has two documented development-only Puma exceptions listed in the [dependency review](docs/audit-2026-09-06.md#dependency-review). See the [release audit](docs/audit-2026-09-06.md) for verification results and outstanding release work.
 
 The normal suite never contacts Nexi. Provider tests are explicit and restricted to the TEST environment.
 

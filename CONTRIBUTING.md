@@ -10,7 +10,7 @@ bin/rake extension:test_app
 CI=1 bin/rake
 bin/zeitwerk-check
 bundle exec rubocop
-bundle exec bundler-audit check --update --ignore CVE-2026-47736 CVE-2026-47737
+bundle exec bundler-audit check --update
 gem build solidus_nexi.gemspec
 ruby dev/verify_package.rb solidus_nexi-*.gem
 ```

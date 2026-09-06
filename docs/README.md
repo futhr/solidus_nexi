@@ -1,220 +1,62 @@
-# Solidus Nexi architecture and code map
+# How the integration works
 
-This document maps the engine's runtime paths and ownership boundaries. Nexi's retrieved payment resource is the financial source of truth. Browser returns and webhook bodies trigger retrieval; neither can directly mark a Solidus payment successful.
-
-## Code map
+The engine creates hosted Nexi checkouts and connects them to Solidus payments. It retrieves payment state from Nexi before updating local financial records. Browser returns and webhooks trigger that retrieval.
 
 ```mermaid
-flowchart TB
-  subgraph Host[Solidus host application]
-    Routes[Engine routes]
-    Views[Storefront and admin partials]
-    Payment[Spree::Payment]
-    Refund[Spree::Refund]
-    Jobs[Active Job backend]
-  end
-
-  subgraph Engine[SolidusNexi Rails engine]
-    Controllers[Checkout, return, and webhook controllers]
-    Services[Checkout and financial services]
-    Models[PaymentSource, Operation, WebhookReceipt]
-    Processing[PaymentProcessing prepend]
-    Reconciliation[ReconcilePayment and RefundReconciliation]
-  end
-
-  subgraph Protocol[Nexi protocol layer]
-    Client[Client and NetHttpTransport]
-    Payload[OrderSerializer and CheckoutPayload]
-    Snapshot[PaymentSnapshot and StateMapper]
-    Webhook[Webhook parser and authenticator]
-  end
-
-  Nexi[Nexi Checkout API]
-
-  Views --> Routes --> Controllers
-  Controllers --> Services
-  Services --> Payload
-  Services --> Models
-  Processing --> Services
-  Payment --> Processing
-  Refund --> Processing
-  Controllers --> Webhook
-  Webhook --> Models
-  Models --> Jobs
-  Jobs --> Reconciliation
-  Reconciliation --> Snapshot
-  Services --> Client
-  Reconciliation --> Client
-  Client <--> Nexi
-  Reconciliation --> Payment
-  Reconciliation --> Refund
+flowchart LR
+  Storefront --> Controllers
+  Controllers --> Checkout[CreateCheckout]
+  Controllers --> Receipts[WebhookReceipt]
+  Receipts --> Jobs
+  Jobs --> Reconcile[ReconcilePayment]
+  Solidus[Spree::Payment] --> Gateway
+  Gateway --> Mutations[Charge, Cancel, Refund]
+  Checkout --> Client[Nexi client]
+  Mutations --> Client
+  Reconcile --> Client
+  Client <--> Nexi[Nexi Payment API]
+  Reconcile --> Solidus
 ```
 
-| Area | Responsibility |
+## Where to look
+
+| Code | Purpose |
 | --- | --- |
-| `lib/solidus_nexi` | Gem entry point, configuration, engine wiring, public URL policy, and install generator. |
-| `lib/solidus_nexi/nexi` | HTTP client, transport policy, typed errors, money conversion, canonical JSON, provider snapshots, state mapping, and webhook validation. This layer has no Solidus models. |
-| `app/controllers/solidus_nexi` | Guest-token-protected checkout creation, opaque return tokens, authenticated webhook intake, and bounded HTTP responses. |
-| `app/services/solidus_nexi` | Order serialization, checkout creation, capture, cancellation, refund, and provider-to-local reconciliation. |
-| `app/models/solidus_nexi` | Solidus payment-method adapter plus durable provider identity, operation intent, amount snapshot, and webhook receipt records. |
-| `app/jobs/solidus_nexi` | Retried provider retrieval and recovery of failed or stale webhook work. |
-| `app/views/spree` | Solidus storefront, API, and admin integration partials. |
-| `db/migrate` | Portable payment-source, operation-journal, and webhook-inbox tables. |
-| `spec` | Unit, service, request, system, generator, task, and opt-in Nexi TEST contract coverage. |
+| `lib/solidus_nexi/nexi` | HTTP transport, money validation, response parsing, state mapping, and webhook authentication. |
+| `app/controllers/solidus_nexi` | Checkout creation, returns, and webhook intake. |
+| `app/services/solidus_nexi/create_checkout.rb` | Reuse a matching checkout or persist a new payment intent before calling Nexi. |
+| `app/services/solidus_nexi/checkout_availability.rb` | Decide whether an existing hosted page can be reused or replaced. |
+| `app/services/solidus_nexi/checkout_context.rb` | Check that the serialized order still matches the checkout. |
+| `app/services/solidus_nexi/reconcile_payment.rb` | Validate provider identity and update payment state under a payment lock. |
+| `app/services/solidus_nexi/reconcile_financial_records.rb` | Add missing capture and refund records under that same lock. |
+| `app/services/solidus_nexi/refund_reconciliation.rb` | Match asynchronous refund outcomes to local refund attempts. |
+| `app/models/solidus_nexi` | Solidus adapters, payment sources, operation records, and webhook receipts. |
+| `app/jobs/solidus_nexi` | Retrieval retries and webhook recovery. |
+| `app/views/spree` | Storefront, API, and admin partials. |
+| `db/migrate` | Engine tables and indexes. |
 
-## Checkout creation
+## Checkout and identity
 
-```mermaid
-sequenceDiagram
-  actor Customer
-  participant Storefront
-  participant Controller as CheckoutSessionsController
-  participant CheckoutBuilder as CreateCheckout
-  participant Database
-  participant Nexi
+Checkout creation locks the order while preparing local records. It releases the lock before the HTTP request. An open checkout can be reused only when the amount and serialized order match. The fingerprint includes item references, descriptions, tax allocation, shipping, currency, and order reference.
 
-  Customer->>Storefront: Select Nexi Checkout
-  Storefront->>Controller: POST order number, guest token, payment method
-  Controller->>Controller: Authenticate order and validate payment method
-  Controller->>CheckoutBuilder: Build webhook, return, and cancel URLs
-  CheckoutBuilder->>Database: Lock order and look for reusable checkout
-  alt Open checkout exists
-    Database-->>CheckoutBuilder: Existing source and hosted URL
-  else New checkout required
-    CheckoutBuilder->>Database: Create source, payment, and create-operation intent
-    CheckoutBuilder->>Database: Claim operation dispatch
-    CheckoutBuilder->>Nexi: POST payment payload
-    Nexi-->>CheckoutBuilder: Payment ID and hosted URL
-    CheckoutBuilder->>Database: Persist provider identity and mark operation succeeded
-  end
-  CheckoutBuilder-->>Controller: Checkout result
-  Controller-->>Customer: 303 hosted redirect or JSON response
-```
+Every new checkout has a `PaymentSource` and an `Operation`. The operation records the request fingerprint and any returned provider payment ID. Recovery validates the payment reference, order, currency, amount, and context before binding a recovered identity.
 
-Checkout creation is serialized under the order lock. An existing unexpired hosted page is reused only when its amount and canonical serialized order context still match. A same-total change to item identity, description, tax allocation, or shipping blocks the stale page and late reconciliation until it expires safely. A create request has no Nexi idempotency key, so an uncertain result blocks another checkout until the original is recovered or its 48-hour provider lifetime plus safety margin has elapsed.
+Nexi's 48-hour hosted-page lifetime is not proof that no payment occurred. Replacing an expired page requires a later verified snapshot with no financial activity. A dispatched create with no provider ID remains blocked for investigation. Only an old intent that was never dispatched can be abandoned automatically.
 
-## Return and webhook reconciliation
+## Mutations and recovery
 
-```mermaid
-sequenceDiagram
-  participant Nexi
-  participant Webhook as WebhooksController
-  participant Inbox as WebhookReceipt
-  participant Job as ProcessWebhookJob
-  participant Reconcile as ReconcilePayment
-  participant Payment as Solidus records
+Charge and refund operations retain one idempotency key for each logical request. Retries must keep the same amount and provider identity. Create and cancellation requests have no provider idempotency key and are not replayed after an uncertain outcome.
 
-  Nexi->>Webhook: POST event with Authorization
-  Webhook->>Webhook: Authenticate and parse bounded envelope
-  Webhook->>Inbox: Insert under payment-method and event-ID uniqueness
-  Inbox-->>Webhook: New or existing receipt
-  Webhook->>Job: Enqueue work when required
-  Webhook-->>Nexi: 200 OK
-  Job->>Inbox: Claim receipt under row lock
-  Job->>Reconcile: Provider payment ID and event references
-  Reconcile->>Nexi: GET complete payment
-  Nexi-->>Reconcile: Current payment resource
-  Reconcile->>Reconcile: Validate identity, order, amount, currency, and event IDs
-  Reconcile->>Payment: Apply monotonic state and missing financial records
-  Reconcile->>Inbox: Mark processed or ignored
-```
+A timeout, TLS failure, server error, or malformed successful response can leave the operation `unknown`. A worker crash can leave it `dispatched`; reconciliation also checks dispatched operations older than five minutes. The reconciliation task can recover a checkout ID held only on its operation record.
 
-The browser return path also enqueues `ReconcilePaymentJob` before redirecting to the local storefront. Duplicate events are safe: the receipt's unique constraint deduplicates intake, and reconciliation compares cumulative provider amounts with existing Solidus capture and refund records.
+Refund initiation is asynchronous. An accepted refund stays pending until retrieval reports completion, failure, cancellation, or expiry. A later pending attempt takes precedence over an earlier failed attempt when deciding whether more reconciliation is needed.
 
-## Financial mutations
+## Webhooks and financial records
 
-```mermaid
-flowchart TD
-  Request[Solidus capture, void, or credit] --> Validate[Require full supported amount and provider identity]
-  Validate --> Intent[Create or find immutable Operation intent]
-  Intent --> Claim{Claim dispatch under lock?}
-  Claim -- No --> Existing{Already successful?}
-  Existing -- Yes --> Result[Return recorded provider identity]
-  Existing -- No --> Busy[Raise operation in progress or reconciliation required]
-  Claim -- Yes --> Provider[Call Nexi once]
-  Provider -->|Definitive rejection| Rejected[Mark rejected]
-  Provider -->|Rate limited before known outcome| Pending[Return operation to pending]
-  Provider -->|Timeout, transport ambiguity, or malformed success| Unknown[Mark unknown and enqueue reconciliation]
-  Provider -->|Success| Persist[Persist provider IDs and succeeded or accepted status]
-  Persist --> Result
-  Unknown --> Retrieve[Retrieve payment state]
-  Retrieve --> Reconciled[Reconcile operation and Solidus records]
-```
+Webhook intake authenticates the Authorization header and stores a small event receipt. A unique payment-method/event-ID index handles duplicate delivery. Inserts use savepoints so a uniqueness race does not abort a caller's PostgreSQL transaction.
 
-Capture and refund persist Nexi idempotency keys per logical operation and may replay only that unchanged intent. Cancellation and checkout creation are not replayed after an uncertain outcome. Refund initiation is asynchronous: a successful POST is `accepted` until retrieval reports completion or failure.
+Jobs retrieve the payment before acting on an event. Reconciliation validates references and updates the source, capture/refund records, and Solidus payment state under the payment lock. It rejects snapshots whose charged, refunded, or cancelled totals are older than the saved totals and retries retrieval. A failed context check does not advance the last successful reconciliation time.
 
-## Local data model
+A short grace period lets synchronous mutations finish their local writes before a webhook applies payment state. Repeated retrieval compares cumulative provider amounts with local records to avoid duplicate capture or refund records. Conflicts with terminal local state require investigation.
 
-```mermaid
-erDiagram
-  SPREE_PAYMENT_METHOD ||--o{ PAYMENT_SOURCE : configures
-  SPREE_ORDER ||--o{ SPREE_PAYMENT : contains
-  SPREE_PAYMENT_METHOD ||--o{ SPREE_PAYMENT : processes
-  PAYMENT_SOURCE ||--o{ SPREE_PAYMENT : backs
-  SPREE_PAYMENT ||--o{ OPERATION : journals
-  SPREE_PAYMENT ||--o{ SPREE_REFUND : records
-  SPREE_PAYMENT_METHOD ||--o{ WEBHOOK_RECEIPT : receives
-
-  PAYMENT_SOURCE {
-    string provider_payment_id
-    string provider_charge_id
-    string return_token
-    integer reserved_amount_minor
-    integer charged_amount_minor
-    integer refunded_amount_minor
-    integer cancelled_amount_minor
-    boolean reconciliation_required
-  }
-  OPERATION {
-    string kind
-    string status
-    string logical_reference
-    string request_fingerprint
-    string idempotency_key
-    string provider_request_id
-    boolean reconciliation_required
-  }
-  WEBHOOK_RECEIPT {
-    string event_id
-    string event_name
-    string provider_payment_id
-    string status
-    integer attempts
-  }
-```
-
-`PaymentSource` holds the latest validated provider snapshot. `Operation` is an immutable-intent journal for external side effects. `WebhookReceipt` is a durable inbox; it stores the minimal event envelope rather than the complete request body.
-
-## Payment state
-
-```mermaid
-stateDiagram-v2
-  [*] --> checkout
-  checkout --> processing
-  checkout --> pending: full reservation retrieved
-  checkout --> completed: full charge retrieved
-  checkout --> void: full cancellation retrieved
-  checkout --> failed: exact provider failure
-  processing --> pending
-  processing --> completed
-  processing --> void
-  processing --> failed
-  pending --> completed
-  pending --> void
-  pending --> failed
-  completed --> completed: refund outcome updates records
-```
-
-Terminal payment states never move backwards. Unexpected partial amounts, mismatched references, and ambiguous refund outcomes leave the source flagged for reconciliation instead of guessing a state.
-
-## Reliability boundaries
-
-- Every provider response is parsed as a bounded JSON object and identifiers are format-checked before persistence.
-- Provider mutations have no hidden transport retries. Unknown outcomes become durable operation state.
-- The application stores minor currency units at the provider boundary and validates the supported currency set.
-- Webhook Authorization accepts the current and one previous secret using constant-time comparison.
-- Return tokens are random and independent of provider IDs; checkout creation requires the Solidus order guest token.
-- Logs contain operation names, result classes, duration, and provider request IDs—not credentials, webhook Authorization values, or provider bodies.
-- Background retrieval uses bounded retries, honors a safe `Retry-After` range, and can recover failed or stale webhook receipts from the database.
-
-See [Operations](operations.md) for retry and incident procedures and [Testing](testing.md) for the executable coverage of these boundaries.
+For retry timing, recovery commands, and incidents, see [Operations](operations.md). For supported flows and their checks, see [Testing](testing.md).

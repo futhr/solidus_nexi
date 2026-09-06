@@ -1,12 +1,11 @@
 # Testing Solidus Nexi
 
-The suite follows Solidus's recommended balance: unit and integration examples cover success, failure, and race paths; Capybara covers the customer handoff and the admin view; merchant-provider checks remain explicit and opt-in.
+Unit and integration specs cover payment state, provider failures, and recovery. Capybara exercises the customer handoff and admin view. Nexi TEST requests run only when explicitly enabled.
 
 ## Local and CI suite
 
 ```sh
 bin/setup
-bin/check-env
 bin/rake extension:test_app
 CI=1 bin/rake
 bundle exec rubocop
@@ -15,6 +14,8 @@ bundle exec rubocop
 `bin/check-env` is the readiness check for a complete hosted checkout, not a prerequisite for the isolated provider contract. It prints variable names only. It requires a 32-byte `SOLIDUS_PREFERENCES_MASTER_KEY`, Test Secret API key, alphanumeric webhook secrets, supported environment/country values, public HTTPS terms pages, and a pathless public HTTPS application origin. Reserved placeholder hosts and non-public IP literals fail validation. Leave `NEXI_CHECKOUT_PREVIOUS_WEBHOOK_SECRET` empty unless a secret rotation is in progress.
 
 Normal specs block external HTTP. Provider responses under `spec/fixtures/nexi` cover API errors, financial states, asynchronous refund acceptance/completion/failure, malformed responses, duplicate webhooks, unknown outcomes, and idempotent reconciliation. System specs render the shipped Solidus storefront partial, exercise the hosted redirect handoff, and render provider state in the real Solidus admin payment page.
+
+Set `SOLIDUS_VERSION=4.6` or `RAILS_VERSION=7.2` to test another supported series. Run `bundle update` and rebuild the dummy app after changing versions. `SOLIDUS_BRANCH` is an optional override for testing upstream changes; ordinary development and CI use published gems. The library leaves `Gemfile.lock` untracked so matrix jobs resolve their own compatible dependencies.
 
 CI runs the primary Solidus target against SQLite, PostgreSQL 16, and MySQL 8.4. The database jobs build a fresh host application and run every extension migration before executing the complete suite.
 
