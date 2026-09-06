@@ -26,13 +26,16 @@ jobs:
       max-parallel: 3
       matrix:
         include:
-          - {solidus: v4.7, rails: "7.2", ruby: "3.2"}
-          - {solidus: v4.7, rails: "7.2", ruby: "3.3"}
-          - {solidus: v4.7, rails: "7.2", ruby: "4.0"}
-          - {solidus: v4.6, rails: "7.2", ruby: "3.2"}
-          - {solidus: v4.6, rails: "7.2", ruby: "3.3"}
+          - {solidus: "4.7", rails: "7.2", ruby: "3.2"}
+          - {solidus: "4.7", rails: "7.2", ruby: "3.3"}
+          - {solidus: "4.7", rails: "7.2", ruby: "4.0"}
+          - {solidus: "4.7", rails: "8.0", ruby: "3.3"}
+          - {solidus: "4.7", rails: "8.1", ruby: "3.3"}
+          - {solidus: "4.7", rails: "8.1", ruby: "4.0"}
+          - {solidus: "4.6", rails: "7.2", ruby: "3.2"}
+          - {solidus: "4.6", rails: "7.2", ruby: "3.3"}
     env:
-      SOLIDUS_BRANCH: ${{ matrix.solidus }}
+      SOLIDUS_VERSION: ${{ matrix.solidus }}
       RAILS_VERSION: ${{ matrix.rails }}
       SOLIDUS_PREFERENCES_MASTER_KEY: 0123456789abcdef0123456789abcdef
     steps:
@@ -45,7 +48,9 @@ jobs:
           bundler-cache: true
       - name: Verify dependency matrix
         run: |
-          bundle exec ruby -rrails -e '
+          bundle exec ruby -rsolidus_core -e '
+            solidus = Gem::Version.new(Spree.solidus_version).segments.first(2).join(".")
+            abort "Unexpected Solidus #{solidus}" unless solidus == ENV.fetch("SOLIDUS_VERSION")
             expected = ENV.fetch("RAILS_VERSION")
             actual = Gem::Version.new(Rails::VERSION::STRING).segments.first(2).join(".")
             abort "Expected Rails #{expected}, resolved #{Rails::VERSION::STRING}" unless actual == expected
@@ -58,14 +63,14 @@ jobs:
         run: bundle exec rake
 
   coverage:
-    name: Coverage, Solidus v4.7, Rails 7.2, Ruby 3.4
+    name: Coverage, Solidus 4.7, Rails 8.1, Ruby 3.4
     runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
     env:
-      SOLIDUS_BRANCH: v4.7
-      RAILS_VERSION: "7.2"
+      SOLIDUS_VERSION: "4.7"
+      RAILS_VERSION: "8.1"
       SOLIDUS_PREFERENCES_MASTER_KEY: 0123456789abcdef0123456789abcdef
     steps:
       - name: Check out repository
@@ -77,7 +82,9 @@ jobs:
           bundler-cache: true
       - name: Verify dependency matrix
         run: |
-          bundle exec ruby -rrails -e '
+          bundle exec ruby -rsolidus_core -e '
+            solidus = Gem::Version.new(Spree.solidus_version).segments.first(2).join(".")
+            abort "Unexpected Solidus #{solidus}" unless solidus == ENV.fetch("SOLIDUS_VERSION")
             expected = ENV.fetch("RAILS_VERSION")
             actual = Gem::Version.new(Rails::VERSION::STRING).segments.first(2).join(".")
             abort "Expected Rails #{expected}, resolved #{Rails::VERSION::STRING}" unless actual == expected
@@ -116,8 +123,8 @@ jobs:
       DB_HOST: 127.0.0.1
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
-      SOLIDUS_BRANCH: v4.7
-      RAILS_VERSION: "7.2"
+      SOLIDUS_VERSION: "4.7"
+      RAILS_VERSION: "8.1"
       SOLIDUS_PREFERENCES_MASTER_KEY: 0123456789abcdef0123456789abcdef
     steps:
       - name: Check out repository
@@ -153,8 +160,8 @@ jobs:
       DB_HOST: 127.0.0.1
       DB_USERNAME: root
       DB_PASSWORD: mysql
-      SOLIDUS_BRANCH: v4.7
-      RAILS_VERSION: "7.2"
+      SOLIDUS_VERSION: "4.7"
+      RAILS_VERSION: "8.1"
       SOLIDUS_PREFERENCES_MASTER_KEY: 0123456789abcdef0123456789abcdef
     steps:
       - name: Check out repository
@@ -199,7 +206,6 @@ jobs:
         # published gem's runtime dependencies. That helper currently pins < 7.
         run: >-
           bundle exec bundler-audit check --update
-          --ignore CVE-2026-47736 CVE-2026-47737
 
   package:
     name: RubyGems package

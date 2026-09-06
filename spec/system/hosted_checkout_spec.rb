@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 class SolidusNexiTestStorefrontController < ApplicationController
+  layout false
   prepend_view_path File.expand_path("../support/views", __dir__)
 
   def show
