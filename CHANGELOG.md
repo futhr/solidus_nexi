@@ -41,6 +41,7 @@ Notable user-facing changes are recorded here. The current `solidus_nexi` rewrit
 - Handle cancelled and expired refunds, keeping a later pending refund visible after an earlier failure.
 - Isolate duplicate inserts in savepoints so PostgreSQL can recover within an existing transaction.
 - Require post-expiry financial verification before replacing a checkout; never abandon a dispatched unknown payment on elapsed time alone.
+- Declare the HTTP transport and the Sprockets railtie required to boot a core-only Solidus bundle.
 - Exclude hidden files and symlinks from gems and verify packaged metadata and file bytes.
 
 ### Security

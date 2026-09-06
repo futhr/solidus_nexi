@@ -222,6 +222,8 @@ jobs:
         run: gem build solidus_nexi.gemspec
       - name: Inspect gem contents
         run: ruby dev/verify_package.rb solidus_nexi-*.gem
+      - name: Boot the packaged engine without development dependencies
+        run: bundle exec ruby dev/smoke_package.rb solidus_nexi-*.gem
       - name: Verify release tag matches the gem version
         if: startsWith(github.ref, 'refs/tags/')
         run: |

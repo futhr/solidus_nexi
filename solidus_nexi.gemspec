@@ -34,6 +34,9 @@ Gem::Specification.new do |spec|
   spec.add_dependency "solidus_core", ">= 4.6", "< 5"
   spec.add_dependency "solidus_support", ">= 0.12", "< 1"
   spec.add_dependency "railties", ">= 7.2.3.2", "< 8.2"
+  spec.add_dependency "net-http", "~> 0.9"
+  # Solidus core loads sprockets/railtie even in stores without solidus_backend.
+  spec.add_dependency "sprockets-rails", ">= 3.5.2", "< 4"
 
   spec.add_development_dependency "solidus_dev_support", "~> 2.12"
   spec.add_development_dependency "bundler-audit", "~> 0.9"

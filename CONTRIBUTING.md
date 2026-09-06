@@ -13,6 +13,7 @@ bundle exec rubocop
 bundle exec bundler-audit check --update
 gem build solidus_nexi.gemspec
 ruby dev/verify_package.rb solidus_nexi-*.gem
+bundle exec ruby dev/smoke_package.rb solidus_nexi-*.gem
 ```
 
 Add regression coverage for behavior changes. Keep migrations portable across SQLite, PostgreSQL, and MySQL, and update `CHANGELOG.md` for user-visible changes.

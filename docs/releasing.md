@@ -38,6 +38,7 @@ bundle exec bundler-audit check --update
 bin/zeitwerk-check
 gem build solidus_nexi.gemspec
 ruby dev/verify_package.rb solidus_nexi-0.1.0.alpha.1.gem
+bundle exec ruby dev/smoke_package.rb solidus_nexi-*.gem
 ```
 
 The two Puma exceptions are documented in `../.bundler-audit.yml`. They affect the development helper and require opt-in PROXY protocol v1. Puma is not a runtime dependency of this gem. Remove the exceptions when the helper accepts a patched version. Run `bundle exec bundler-audit check --config /dev/null` to inspect the unfiltered result.
