@@ -43,6 +43,33 @@ RSpec.describe SolidusNexi::Nexi::PaymentSnapshot do
       .to raise_error(SolidusNexi::Nexi::MalformedResponseError, /myReference/)
   end
 
+  [10_000.9, "10000", nil, true, 2_147_483_648].each do |value|
+    it "rejects an invalid order amount #{value.inspect}" do
+      body = JSON.parse(fixture("nexi/payments/reserved.json"))
+      body.fetch("payment").fetch("orderDetails")["amount"] = value
+
+      expect { described_class.new(body) }.to raise_error(SolidusNexi::Nexi::MalformedResponseError)
+    end
+
+    it "rejects an invalid summary amount #{value.inspect}" do
+      body = JSON.parse(fixture("nexi/payments/reserved.json"))
+      body.fetch("payment").fetch("summary")["reservedAmount"] = value
+
+      expect { described_class.new(body).amounts }.to raise_error(SolidusNexi::Nexi::MalformedResponseError)
+    end
+  end
+
+  %w[charges refunds].each do |key|
+    it "rejects malformed #{key} instead of treating them as absent" do
+      [{}, "invalid", [nil]].each do |value|
+        body = JSON.parse(fixture("nexi/payments/charged.json"))
+        body.fetch("payment")[key] = value
+
+        expect { described_class.new(body) }.to raise_error(SolidusNexi::Nexi::MalformedResponseError, /#{key}/)
+      end
+    end
+  end
+
   def fixture(path)
     Rails.root.join("..", "fixtures", path).read
   end

@@ -93,9 +93,12 @@ module SolidusNexi
       end
 
       def integer(summary, key)
-        Integer(summary[key] || summary[key.to_sym] || 0)
-      rescue ArgumentError, TypeError
-        raise MalformedResponseError, "Nexi payment summary contains an invalid #{key}"
+        value = summary.fetch(key) { summary.fetch(key.to_sym, 0) }
+        unless value.is_a?(Integer)
+          raise MalformedResponseError, "Nexi payment summary contains an invalid #{key}"
+        end
+
+        value
       end
 
       def validate_summary!(values, expected)

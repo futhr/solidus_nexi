@@ -6,6 +6,13 @@ RSpec.describe SolidusNexi::Nexi::Money do
       expect(described_class.to_minor(BigDecimal("9.99"), "EUR")).to eq(999)
     end
 
+    it "rejects non-finite values" do
+      %w[NaN Infinity -Infinity].each do |value|
+        expect { described_class.to_minor(value, "SEK") }
+          .to raise_error(SolidusNexi::Nexi::ValidationError, /finite/)
+      end
+    end
+
     it "rejects precision that Nexi cannot represent" do
       expect { described_class.to_minor("1.001", "SEK") }
         .to raise_error(SolidusNexi::Nexi::ValidationError, /two decimal/)

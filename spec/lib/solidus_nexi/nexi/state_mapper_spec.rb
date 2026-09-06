@@ -98,6 +98,14 @@ RSpec.describe SolidusNexi::Nexi::StateMapper do
     end.to raise_error(SolidusNexi::Nexi::MalformedResponseError, /chargedAmount/)
   end
 
+  [10_000.9, "10000", nil, true].each do |value|
+    it "rejects a non-integer summary amount #{value.inspect}" do
+      expect do
+        mapper.map(summary: {"chargedAmount" => value}, expected_amount_minor: 10_000)
+      end.to raise_error(SolidusNexi::Nexi::MalformedResponseError, /chargedAmount/)
+    end
+  end
+
   it "prevents late events from regressing terminal Solidus state" do
     expect(mapper.transition_allowed?("completed", "pending")).to be(false)
     expect(mapper.transition_allowed?("void", "completed")).to be(false)

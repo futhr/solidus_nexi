@@ -25,8 +25,8 @@ module SolidusNexi
         @currency = Money.validate_currency!(order.fetch("currency"))
         @order_reference = bounded_optional_string(order["reference"], "reference")
         @my_reference = bounded_optional_string(payment["myReference"], "myReference")
-        @charge_id = latest_identifier(payment["charges"], "chargeId")
-        @refunds = Array(payment["refunds"]).select { |refund| refund.is_a?(Hash) }
+        @charge_id = latest_identifier(collection(payment["charges"], "charges"), "chargeId")
+        @refunds = collection(payment["refunds"], "refunds")
         @refund_id = latest_identifier(@refunds, "refundId")
       rescue KeyError
         raise MalformedResponseError, "Nexi payment response is missing required fields"
@@ -59,8 +59,17 @@ module SolidusNexi
 
       private
 
+      def collection(value, key)
+        return [] if value.nil?
+        unless value.is_a?(Array) && value.all? { |entry| entry.is_a?(Hash) }
+          raise MalformedResponseError, "Nexi payment response contains invalid #{key}"
+        end
+
+        value
+      end
+
       def latest_identifier(collection, key)
-        entry = Array(collection).reverse.find { |value| value.is_a?(Hash) && value[key].present? }
+        entry = collection.reverse.find { |value| value[key].present? }
         entry && required_string(entry, key)
       end
 
@@ -83,21 +92,17 @@ module SolidusNexi
       end
 
       def positive_integer(object, key)
-        value = Integer(object.fetch(key))
-        raise MalformedResponseError, "Nexi payment response contains an invalid #{key}" unless value.positive?
+        value = object.fetch(key)
+        raise MalformedResponseError, "Nexi payment response contains an invalid #{key}" unless value.is_a?(Integer) && value.between?(1, 2_147_483_647)
 
         value
-      rescue ArgumentError, TypeError
-        raise MalformedResponseError, "Nexi payment response contains an invalid #{key}"
       end
 
       def nonnegative_integer(object, key)
-        value = Integer(object[key] || 0)
-        raise MalformedResponseError, "Nexi payment response contains an invalid #{key}" if value.negative?
+        value = object.fetch(key, 0)
+        raise MalformedResponseError, "Nexi payment response contains an invalid #{key}" unless value.is_a?(Integer) && value.between?(0, 2_147_483_647)
 
         value
-      rescue ArgumentError, TypeError
-        raise MalformedResponseError, "Nexi payment response contains an invalid #{key}"
       end
 
       def bounded_optional_string(value, key)

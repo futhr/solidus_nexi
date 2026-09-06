@@ -13,6 +13,7 @@ module SolidusNexi
       def to_minor(amount, currency)
         validate_currency!(currency)
         decimal = BigDecimal(amount.to_s)
+        raise ValidationError, "amount must be finite" unless decimal.finite?
         scaled = decimal * (10**EXPONENT)
         raise ValidationError, "amount has more than two decimal places" unless scaled.frac.zero?
 
