@@ -17,7 +17,7 @@ module SolidusNexi
       submit_cancel(operation)
     rescue Nexi::RateLimitError => error
       retryable!(operation, error)
-    rescue Nexi::TimeoutUnknownOutcome => error
+    rescue Nexi::TimeoutUnknownOutcome, Nexi::MalformedResponseError => error
       unknown!(operation, error)
     rescue Nexi::Error => error
       reject!(operation, error) if operation

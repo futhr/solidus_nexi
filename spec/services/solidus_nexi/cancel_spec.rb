@@ -39,6 +39,21 @@ RSpec.describe SolidusNexi::Cancel, type: :model do
     )
   end
 
+  it "preserves a malformed cancellation response as unknown and never replays it" do
+    client = instance_double(SolidusNexi::Nexi::Client)
+    expect(client).to receive(:cancel).once.and_raise(SolidusNexi::Nexi::MalformedResponseError, "invalid JSON")
+    SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+    service = described_class.new(payment:, amount_minor: 10_000, logical_reference: "cancel:#{payment.number}")
+
+    2.times do
+      expect { service.call }.to raise_error(SolidusNexi::Nexi::ReconciliationRequired)
+    end
+
+    expect(SolidusNexi::Operation.find_by!(payment:, kind: "cancel"))
+      .to have_attributes(status: "unknown", reconciliation_required: true)
+    expect(SolidusNexi::ReconcilePaymentJob).to have_been_enqueued.with(source.id).once
+  end
+
   it "rejects a partial cancellation before network dispatch" do
     SolidusNexi.configuration.client_factory = ->(*) { raise "must not build a client" }
     service = described_class.new(
