@@ -26,7 +26,8 @@ Gem::Specification.new do |spec|
 
   spec.required_ruby_version = Gem::Requirement.new(">= 3.2")
 
-  files = Dir.glob("{app,config,db,docs,lib}/**/*", File::FNM_DOTMATCH).select { |path| File.file?(path) }
+  files = Dir.glob("{app,config,db,docs,lib}/**/*.{rb,rake,erb,jbuilder,yml,md}")
+    .select { |path| File.file?(path) && !File.symlink?(path) }
   spec.files = (files + %w[CHANGELOG.md CONTRIBUTING.md LICENSE.md README.md SECURITY.md]).sort
   spec.require_paths = ["lib"]
 

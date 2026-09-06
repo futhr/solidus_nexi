@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "rubygems/package"
+require "digest"
+require "tmpdir"
 
 abort "Usage: ruby dev/verify_package.rb path/to/solidus_nexi-VERSION.gem" unless ARGV.one?
 
@@ -16,6 +18,25 @@ abort "Could not load solidus_nexi.gemspec" unless source_spec
 expected_artifact = "#{source_spec.name}-#{source_spec.version}.gem"
 abort "Expected #{expected_artifact}, got #{File.basename(artifact)}" unless File.basename(artifact) == expected_artifact
 abort "Packaged gemspec does not match the source gemspec" unless packaged_spec.files.sort == source_spec.files.sort
+abort "Archive contents do not match the packaged gemspec" unless package.contents.sort == packaged_spec.files.sort
+
+%i[name version authors email summary description homepage licenses metadata required_ruby_version dependencies].each do |attribute|
+  unless packaged_spec.public_send(attribute) == source_spec.public_send(attribute)
+    abort "Packaged #{attribute} does not match the source gemspec"
+  end
+end
+
+Dir.mktmpdir("solidus-nexi-package-") do |directory|
+  package.extract_files(directory)
+  packaged_spec.files.each do |path|
+    source = File.expand_path("../#{path}", __dir__)
+    extracted = File.join(directory, path)
+    unless File.file?(extracted) && !File.symlink?(extracted) &&
+        Digest::SHA256.file(extracted) == Digest::SHA256.file(source)
+      abort "Packaged file differs from source: #{path}"
+    end
+  end
+end
 
 required = %w[
   CHANGELOG.md
@@ -47,3 +68,5 @@ abort "Push host is not restricted to RubyGems.org" unless metadata["allowed_pus
 abort "Source URI is not tied to this version" unless metadata["source_code_uri"].end_with?("/v#{packaged_spec.version}")
 
 puts "Verified #{File.basename(artifact)} (#{packaged_spec.files.length} files)"
+
+puts "SHA256 #{Digest::SHA256.file(artifact).hexdigest}"
