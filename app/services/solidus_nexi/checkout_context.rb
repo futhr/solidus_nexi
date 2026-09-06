@@ -28,7 +28,7 @@ module SolidusNexi
     end
 
     def self.mark_conflict!(source, status)
-      source.update!(provider_status: status, reconciliation_required: true, last_reconciled_at: Time.current)
+      source.update!(provider_status: status, reconciliation_required: true)
     end
     private_class_method :mark_conflict!
   end

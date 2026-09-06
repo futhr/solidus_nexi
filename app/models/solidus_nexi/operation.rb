@@ -18,7 +18,10 @@ module SolidusNexi
     validates :logical_reference, uniqueness: {scope: %i[payment_id kind]}
     validate :idempotency_key_matches_kind
 
-    scope :requiring_reconciliation, -> { where(reconciliation_required: true) }
+    scope :requiring_reconciliation, -> do
+      where(reconciliation_required: true)
+        .or(where(status: "dispatched", dispatched_at: ..5.minutes.ago))
+    end
 
     def self.create_or_find_intent!(payment:, kind:, logical_reference:, amount_minor:, currency:,
       request_fingerprint:, idempotency_key: nil)

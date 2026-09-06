@@ -20,17 +20,17 @@ module SolidusNexi
       validate_input!
       response = client.retrieve_payment(payment_id: @provider_payment_id)
       snapshot = Nexi::PaymentSnapshot.new(response.body, expected_payment_id: @provider_payment_id)
+      amounts = snapshot.amounts
       @source ||= recover_source(snapshot)
       return Result.new(payment: nil, source: nil, mapping: nil) unless @source
 
       payment = payment_for(@source)
       validate_order!(payment, snapshot)
       CheckoutContext.verify!(payment:, source: @source)
-      amounts = snapshot.amounts
       mapping = initial_mapping(snapshot)
 
       payment.with_lock do
-        payment.reload
+        validate_snapshot_fresh!(amounts)
         refund_outcome = reconcile_operations!(payment, snapshot, amounts)
         mapping = refund_outcome.mapping || mapping
         if recent_local_mutation?(payment)
@@ -39,7 +39,7 @@ module SolidusNexi
         else
           mapping = mapping_for_payment(payment, mapping)
           update_source!(snapshot, amounts, mapping)
-          apply_financial_records!(payment, snapshot, amounts)
+          ReconcileFinancialRecords.new(payment:, snapshot:).call
           apply_payment_state!(payment, mapping)
         end
       end
@@ -48,6 +48,14 @@ module SolidusNexi
     end
 
     private
+
+    def validate_snapshot_fresh!(amounts)
+      @source.reload
+      if amounts[:charged] < @source.charged_amount_minor || amounts[:refunded] < @source.refunded_amount_minor ||
+          amounts[:cancelled] < @source.cancelled_amount_minor
+        raise Nexi::ProviderUnavailableError, "Nexi returned an older financial snapshot; retry reconciliation"
+      end
+    end
 
     def initial_mapping(snapshot)
       Nexi::StateMapper.new.map(
@@ -60,6 +68,12 @@ module SolidusNexi
     def validate_input!
       unless @payment_method.is_a?(PaymentMethod) && @provider_payment_id.present?
         raise Nexi::ValidationError, "payment method and provider payment ID are required"
+      end
+      return unless @source
+
+      if @source.payment_method != @payment_method ||
+          (@source.provider_payment_id.present? && @source.provider_payment_id != @provider_payment_id)
+        raise Nexi::ConflictError, "Nexi source is already bound to another payment or payment method"
       end
     end
 
@@ -74,7 +88,9 @@ module SolidusNexi
       return unless payment
 
       payment.source.with_lock do
-        payment.source.reload
+        validate_order!(payment, snapshot)
+        initial_mapping(snapshot)
+        CheckoutContext.verify!(payment:, source: payment.source)
         if payment.source.provider_payment_id.blank?
           payment.source.update!(provider_payment_id: @provider_payment_id, provider_status: "recovered")
           payment.update!(response_code: @provider_payment_id)
@@ -91,7 +107,6 @@ module SolidusNexi
     end
 
     def recoverable_payment(snapshot)
-      validate_event_reference!(snapshot)
       return payment_from_provider_reference!(snapshot) if snapshot.my_reference.present?
 
       order = Spree::Order.find_by(number: snapshot.order_reference)
@@ -140,6 +155,10 @@ module SolidusNexi
     end
 
     def validate_order!(payment, snapshot)
+      validate_event_reference!(snapshot)
+      if snapshot.my_reference.present? && snapshot.my_reference != payment.number
+        raise Nexi::ConflictError, "Nexi payment reference does not match the Solidus payment"
+      end
       local_amount = Nexi::Money.to_minor(payment.amount, payment.currency)
       unless snapshot.amount_minor == local_amount && snapshot.currency == payment.currency
         raise Nexi::ConflictError, "Nexi payment does not match the Solidus payment"
@@ -196,8 +215,7 @@ module SolidusNexi
 
         operation.update!(
           provider_payment_id: snapshot.payment_id,
-          provider_charge_id: snapshot.charge_id || operation.provider_charge_id,
-          provider_refund_id: snapshot.refund_id || operation.provider_refund_id
+          provider_charge_id: snapshot.charge_id || operation.provider_charge_id
         )
         operation.mark_reconciled!
       end
@@ -207,26 +225,6 @@ module SolidusNexi
     def recent_local_mutation?(payment)
       Operation.where(payment:, kind: %w[charge cancel refund], status: %w[dispatched accepted succeeded])
         .exists?(updated_at: LOCAL_MUTATION_GRACE.ago..)
-    end
-
-    def apply_financial_records!(payment, snapshot, amounts)
-      captured_minor = Nexi::Money.to_minor(payment.capture_events.sum(:amount), payment.currency)
-      if amounts[:charged] > captured_minor
-        payment.capture_events.create!(amount: decimal_amount(amounts[:charged] - captured_minor))
-      end
-
-      refunded_minor = Nexi::Money.to_minor(payment.refunds.sum(:amount), payment.currency)
-      return unless amounts[:refunded] > refunded_minor
-
-      refund_id = snapshot.completed_refund_id || snapshot.refund_id
-      raise Nexi::ReconciliationRequired, "Nexi refund is missing its identifier" unless refund_id
-
-      reason = Spree::RefundReason.where(name: "Nexi reconciliation").first_or_create!
-      payment.refunds.create!(
-        amount: decimal_amount(amounts[:refunded] - refunded_minor),
-        reason:,
-        transaction_id: refund_id
-      )
     end
 
     def apply_payment_state!(payment, mapping)
@@ -242,10 +240,6 @@ module SolidusNexi
         payment.started_processing! if payment.checkout?
         payment.failure!
       end
-    end
-
-    def decimal_amount(amount_minor)
-      BigDecimal(amount_minor.to_s) / 100
     end
 
     def client

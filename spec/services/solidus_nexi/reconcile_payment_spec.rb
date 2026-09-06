@@ -69,6 +69,7 @@ RSpec.describe SolidusNexi::ReconcilePayment, type: :model do
       .to raise_error(SolidusNexi::Nexi::ConflictError)
     expect(source.reload).to have_attributes(
       provider_status: "checkout_context_conflict",
+      last_reconciled_at: nil,
       reconciliation_required: true
     )
     expect(payment.reload).to be_checkout
@@ -386,6 +387,70 @@ RSpec.describe SolidusNexi::ReconcilePayment, type: :model do
     expect { described_class.new(source:).call }
       .to raise_error(SolidusNexi::Nexi::ReconciliationRequired, /missing its identifier/)
     expect(payment.refunds).to be_empty
+  end
+
+  it "does not bind a recovered identity before validating the amount" do
+    source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK")
+    payment = create(:payment, order:, payment_method:, source:, amount: 100)
+    use_provider_fixture("nexi/payments/reserved.json", order:, my_reference: payment.number, amount_minor: 9_999,
+      summary: {"reservedAmount" => 9_999})
+
+    expect { described_class.new(payment_method:, provider_payment_id:).call }
+      .to raise_error(SolidusNexi::Nexi::ConflictError)
+    expect(source.reload.provider_payment_id).to be_nil
+    expect(payment.reload.response_code).not_to eq(provider_payment_id)
+  end
+
+  it "refuses to replace an already bound provider identity" do
+    source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK", provider_payment_id:)
+    create(:payment, order:, payment_method:, source:, amount: 100)
+    SolidusNexi.configuration.client_factory = ->(*) { raise "must not retrieve another payment" }
+
+    expect { described_class.new(source:, provider_payment_id: "different-payment").call }
+      .to raise_error(SolidusNexi::Nexi::ConflictError, /already bound/)
+    expect(source.reload.provider_payment_id).to eq(provider_payment_id)
+  end
+
+  it "validates webhook and merchant references even for a known source" do
+    source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK", provider_payment_id:)
+    payment = create(:payment, order:, payment_method:, source:, amount: 100)
+    use_provider_fixture("nexi/payments/reserved.json", order:, my_reference: payment.number)
+
+    expect { described_class.new(source:, order_reference: "another-order").call }
+      .to raise_error(SolidusNexi::Nexi::ConflictError, /webhook order reference/)
+    use_provider_fixture("nexi/payments/reserved.json", order:, my_reference: "another-payment")
+    expect { described_class.new(source:).call }
+      .to raise_error(SolidusNexi::Nexi::ConflictError, /payment reference/)
+    expect(payment.reload).to be_checkout
+  end
+
+  it "recovers an operation left dispatched when its worker died" do
+    source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK", provider_payment_id:)
+    payment = create(:payment, order:, payment_method:, source:, amount: 100, state: "pending")
+    operation = SolidusNexi::Operation.create_or_find_intent!(
+      payment:, kind: :charge, logical_reference: "capture:#{payment.number}",
+      amount_minor: 10_000, currency: "SEK", request_fingerprint: "f" * 64, idempotency_key: "crashed-charge"
+    )
+    operation.update!(status: "dispatched", dispatched_at: 6.minutes.ago, updated_at: 6.minutes.ago)
+    use_provider_fixture("nexi/payments/charged.json", order:)
+
+    described_class.new(source:).call
+
+    expect(operation.reload).to have_attributes(status: "reconciled", reconciliation_required: false)
+    expect(payment.reload).to be_completed
+  end
+
+  it "does not overwrite newer financial amounts with a stale retrieval" do
+    source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK", provider_payment_id:)
+    payment = create(:payment, order:, payment_method:, source:, amount: 100, state: "completed")
+    # Another worker updates the database after this worker loaded its source.
+    source.class.find(source.id).update!(charged_amount_minor: 10_000, provider_status: "charged")
+    use_provider_fixture("nexi/payments/reserved.json", order:)
+
+    expect { described_class.new(source:).call }
+      .to raise_error(SolidusNexi::Nexi::ProviderUnavailableError, /older financial snapshot/)
+    expect(source.reload).to have_attributes(charged_amount_minor: 10_000, provider_status: "charged")
+    expect(payment.reload).to be_completed
   end
 
   private

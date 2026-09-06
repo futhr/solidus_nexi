@@ -14,11 +14,19 @@ namespace :solidus_nexi do
       SolidusNexi::PaymentSource
         .where(id: source_ids)
         .or(SolidusNexi::PaymentSource.requiring_reconciliation)
-        .where.not(provider_payment_id: nil)
+
     end
 
     sources.find_each do |source|
-      SolidusNexi::ReconcilePaymentJob.perform_later(source.id)
+      if source.provider_payment_id.present?
+        SolidusNexi::ReconcilePaymentJob.perform_later(source.id)
+      else
+        provider_id = SolidusNexi::Operation.where(payment: source.payments, kind: "create")
+          .where.not(provider_payment_id: nil).order(:created_at).last&.provider_payment_id
+        next unless provider_id
+
+        SolidusNexi::ReconcilePaymentJob.perform_later(source.id, provider_payment_id: provider_id)
+      end
       puts "Enqueued Nexi reconciliation for source #{source.id}"
     end
   end
