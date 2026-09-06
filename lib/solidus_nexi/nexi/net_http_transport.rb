@@ -51,11 +51,12 @@ module SolidusNexi
 
       def connection(uri)
         Net::HTTP.new(uri.host, uri.port).tap do |http|
+          http.max_retries = 0
           http.use_ssl = true
           http.verify_mode = OpenSSL::SSL::VERIFY_PEER
           http.open_timeout = @open_timeout
           http.read_timeout = @read_timeout
-          http.write_timeout = @write_timeout if http.respond_to?(:write_timeout=)
+          http.write_timeout = @write_timeout
         end
       end
 

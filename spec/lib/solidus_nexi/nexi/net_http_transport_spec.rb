@@ -36,6 +36,22 @@ RSpec.describe SolidusNexi::Nexi::NetHttpTransport do
     expect(result.headers).to eq("content-type" => ["application/json"])
   end
 
+  it "uses verified TLS, bounded timeouts, and no implicit retries" do
+    http = instance_double(Net::HTTP)
+    expect(Net::HTTP).to receive(:new).with("test.api.dibspayment.eu", 443).and_return(http)
+    expect(http).to receive(:max_retries=).with(0)
+    expect(http).to receive(:use_ssl=).with(true)
+    expect(http).to receive(:verify_mode=).with(OpenSSL::SSL::VERIFY_PEER)
+    expect(http).to receive(:open_timeout=).with(5)
+    expect(http).to receive(:read_timeout=).with(15)
+    expect(http).to receive(:write_timeout=).with(15)
+    response = response_class.new("204", {}, [])
+    expect(http).to receive(:request).and_yield(response).and_return(response)
+
+    expect(transport.call(method: :post, url: "https://test.api.dibspayment.eu/v1/payments", headers: {}).status)
+      .to eq(204)
+  end
+
   it "rejects an oversized declared response before reading it" do
     response = response_class.new(
       "200",

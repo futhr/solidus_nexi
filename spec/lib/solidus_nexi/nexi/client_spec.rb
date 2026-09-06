@@ -47,6 +47,15 @@ RSpec.describe SolidusNexi::Nexi::Client do
     end.to raise_error(SolidusNexi::Nexi::TimeoutUnknownOutcome)
   end
 
+  it "classifies TLS failures without losing an uncertain mutation" do
+    allow(transport).to receive(:call).and_raise(OpenSSL::SSL::SSLError, "TLS connection closed")
+
+    expect { client.retrieve_payment(payment_id: "payment-1") }
+      .to raise_error(SolidusNexi::Nexi::TransportError)
+    expect { client.cancel(payment_id: "payment-1", amount_minor: 100) }
+      .to raise_error(SolidusNexi::Nexi::TimeoutUnknownOutcome)
+  end
+
   it "maps throttling and preserves safe retry metadata" do
     allow(transport).to receive(:call).and_return(
       SolidusNexi::Nexi::NetHttpTransport::Response.new(

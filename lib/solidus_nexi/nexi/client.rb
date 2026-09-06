@@ -92,7 +92,7 @@ module SolidusNexi
       rescue Timeout::Error => error
         log(operation:, result: error.class.name, started_at:)
         raise timeout_error(mutation, error)
-      rescue SocketError, IOError, SystemCallError => error
+      rescue SocketError, IOError, SystemCallError, OpenSSL::SSL::SSLError => error
         log(operation:, result: error.class.name, started_at:)
         raise transport_error(mutation, error)
       rescue Error => error
