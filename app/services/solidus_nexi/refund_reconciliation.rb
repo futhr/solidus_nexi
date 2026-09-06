@@ -21,6 +21,7 @@ module SolidusNexi
       end
     end
     PENDING_STATES = %w[initiated pending].freeze
+    FAILED_STATES = %w[failed cancelled expired].freeze
 
     def initialize(payment:, snapshot:, amounts:, event_name: nil, event_refund_id: nil)
       @payment = payment
@@ -87,7 +88,7 @@ module SolidusNexi
     end
 
     def failed?(refund_id, state)
-      return true if state == "failed"
+      return FAILED_STATES.include?(state) if state.present?
 
       @event_name == "payment.refund.failed" &&
         @event_refund_id.present? && @event_refund_id == refund_id
@@ -155,7 +156,7 @@ module SolidusNexi
 
     def unmatched_provider_outcome
       state = @snapshot.refund_state_for(@event_refund_id) if @event_refund_id
-      if @event_name == "payment.refund.failed" || state == "failed"
+      if FAILED_STATES.include?(state) || (state.blank? && @event_name == "payment.refund.failed")
         return Result.new(status: :unexpected_failure, provider_refund_id: @event_refund_id)
       end
       pending_id = @snapshot.refund_id_with_state(*PENDING_STATES)
@@ -167,7 +168,7 @@ module SolidusNexi
     end
 
     def outcome_priority(status)
-      %i[none unknown unexpected_pending pending unexpected_failure failed completed].index(status) || 0
+      %i[none unexpected_failure failed unknown unexpected_pending pending completed].index(status) || 0
     end
   end
 end

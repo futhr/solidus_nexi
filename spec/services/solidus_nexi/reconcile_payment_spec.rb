@@ -424,6 +424,46 @@ RSpec.describe SolidusNexi::ReconcilePayment, type: :model do
     expect(payment.reload).to be_checkout
   end
 
+  %w[Cancelled Expired].each do |state|
+    it "restores refundable value when an accepted refund becomes #{state}" do
+      source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK", provider_payment_id:)
+      payment = create(:payment, order:, payment_method:, source:, amount: 100, state: "completed")
+      refund = create(:refund, payment:, amount: 100, transaction_id: "refund-1")
+      operation = accepted_refund_operation(payment, refund)
+      operation.update!(provider_refund_id: "refund-1")
+      use_provider_fixture("nexi/payments/charged.json", order:,
+        refunds: [{"refundId" => "refund-1", "state" => state}])
+
+      2.times { described_class.new(source:).call }
+
+      expect(payment.reload.credit_allowed).to eq(BigDecimal("100"))
+      expect(operation.reload.status).to eq("rejected")
+      expect(Spree::Refund.where(id: refund.id)).to be_empty
+    end
+  end
+
+  it "keeps a retry pending even when an earlier refund failed" do
+    source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK", provider_payment_id:)
+    payment = create(:payment, order:, payment_method:, source:, amount: 100, state: "completed")
+    old_refund = create(:refund, payment:, amount: 100, transaction_id: "failed-refund")
+    old_operation = accepted_refund_operation(payment, old_refund)
+    old_operation.update!(provider_refund_id: "failed-refund")
+    old_operation.mark_rejected!(SolidusNexi::Nexi::Error.new("failed", provider_code: "refund_failed"))
+    old_refund.destroy!
+    refund = create(:refund, payment:, amount: 100, transaction_id: "pending-refund")
+    operation = accepted_refund_operation(payment, refund)
+    operation.update!(provider_refund_id: "pending-refund")
+    use_provider_fixture("nexi/payments/charged.json", order:, refunds: [
+      {"refundId" => "failed-refund", "state" => "Failed"},
+      {"refundId" => "pending-refund", "state" => "Pending"}
+    ])
+
+    described_class.new(source:).call
+
+    expect(source.reload).to have_attributes(provider_status: "refund_pending", reconciliation_required: true)
+    expect(refund.reload).to be_persisted
+  end
+
   it "recovers an operation left dispatched when its worker died" do
     source = SolidusNexi::PaymentSource.create!(payment_method:, currency: "SEK", provider_payment_id:)
     payment = create(:payment, order:, payment_method:, source:, amount: 100, state: "pending")
