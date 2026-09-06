@@ -19,9 +19,7 @@ module SolidusNexi
         source = payment.source
         next unless source.provider_payment_id.present? && source.hosted_payment_page_url.present?
 
-        safely_expired = source.checkout_expires_at &&
-          source.checkout_expires_at < REPLACEMENT_SAFETY_MARGIN.ago
-        unless payment.checkout? && safely_expired
+        unless payment.checkout? && safely_expired?(source)
           source.update!(provider_status: "checkout_replacement_blocked", reconciliation_required: true)
           return Result.new(payment: nil, error: :replacement_blocked)
         end
@@ -37,6 +35,14 @@ module SolidusNexi
     end
 
     private
+
+    def safely_expired?(source)
+      source.checkout_expires_at && source.checkout_expires_at < REPLACEMENT_SAFETY_MARGIN.ago &&
+        source.last_reconciled_at &&
+        source.last_reconciled_at > source.checkout_expires_at + REPLACEMENT_SAFETY_MARGIN &&
+        source.reserved_amount_minor.zero? && source.charged_amount_minor.zero? &&
+        source.refunded_amount_minor.zero? && source.cancelled_amount_minor.zero?
+    end
 
     def open_checkout_result(open_payments)
       matching = open_payments.select do |payment|

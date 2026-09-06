@@ -37,7 +37,7 @@ RSpec.describe SolidusNexi::Operation, type: :model do
 
     expect(operation).to have_attributes(
       status: "abandoned",
-      provider_code: "checkout_expired_without_provider_identity",
+      provider_code: "checkout_never_dispatched",
       reconciliation_required: false
     )
     expect(operation.completed_at).to be_present

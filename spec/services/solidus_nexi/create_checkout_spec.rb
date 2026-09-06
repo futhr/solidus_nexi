@@ -77,7 +77,7 @@ RSpec.describe SolidusNexi::CreateCheckout, type: :model do
     end
     SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
     first = service.call
-    first.source.update!(checkout_expires_at: 6.minutes.ago)
+    first.source.update!(checkout_expires_at: 6.minutes.ago, last_reconciled_at: Time.current)
 
     second = service.call
 
@@ -218,26 +218,37 @@ RSpec.describe SolidusNexi::CreateCheckout, type: :model do
     expect { service.call }.to raise_error(SolidusNexi::Nexi::ReconciliationRequired)
   end
 
-  it "abandons an unknowable checkout only after Nexi's checkout lifetime" do
+  it "keeps an unknown create blocked even after the hosted page expires" do
     old_payment, = create_local_checkout_intent
     old_operation = create_checkout_operation(old_payment)
-    old_operation.update!(
-      status: "unknown",
-      dispatched_at: (described_class::UNKNOWN_CREATE_ABANDON_AFTER + 1.minute).ago,
-      reconciliation_required: true
-    )
+    old_operation.update!(status: "unknown", dispatched_at: 3.days.ago, reconciliation_required: true)
+    SolidusNexi.configuration.client_factory = ->(*) { raise "must not create another payment" }
+
+    expect { service.call }.to raise_error(SolidusNexi::Nexi::ReconciliationRequired)
+    expect(old_operation.reload.status).to eq("unknown")
+    expect(old_payment.reload).not_to be_invalid
+  end
+
+  it "abandons only an old intent that was never dispatched" do
+    old_payment, = create_local_checkout_intent
+    old_operation = create_checkout_operation(old_payment)
+    old_operation.update!(updated_at: 6.minutes.ago)
     client = instance_double(SolidusNexi::Nexi::Client, create_payment: created_response)
     SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
 
-    result = service.call
-
-    expect(result.payment).not_to eq(old_payment)
-    expect(old_operation.reload).to have_attributes(
-      status: "abandoned",
-      provider_code: "checkout_expired_without_provider_identity",
-      reconciliation_required: false
-    )
+    expect(service.call.payment).not_to eq(old_payment)
+    expect(old_operation.reload.status).to eq("abandoned")
     expect(old_payment.reload).to be_invalid
+  end
+
+  it "does not replace an expired checkout whose financial outcome has not been retrieved" do
+    client = instance_double(SolidusNexi::Nexi::Client, create_payment: created_response)
+    SolidusNexi.configuration.client_factory = ->(_payment_method) { client }
+    first = service.call
+    first.source.update!(checkout_expires_at: 1.day.ago)
+
+    expect { service.call }.to raise_error(SolidusNexi::Nexi::ReconciliationRequired)
+    expect(first.payment.reload).to be_checkout
     expect(client).to have_received(:create_payment).once
   end
 
@@ -247,7 +258,7 @@ RSpec.describe SolidusNexi::CreateCheckout, type: :model do
     operation.update!(
       status: "unknown",
       provider_payment_id: "provider-payment-known",
-      dispatched_at: (described_class::UNKNOWN_CREATE_ABANDON_AFTER + 1.day).ago,
+      dispatched_at: 3.days.ago,
       reconciliation_required: true
     )
     client = instance_double(SolidusNexi::Nexi::Client)

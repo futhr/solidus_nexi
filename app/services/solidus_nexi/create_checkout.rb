@@ -6,7 +6,6 @@ module SolidusNexi
   class CreateCheckout
     Result = Data.define(:payment, :source, :provider_payment_id, :hosted_payment_page_url, :reused)
     CHECKOUT_LIFETIME = 48.hours
-    UNKNOWN_CREATE_ABANDON_AFTER = CHECKOUT_LIFETIME + 5.minutes
 
     def initialize(order:, payment_method:, webhook_url:, return_url_for:, cancel_url_for:)
       @order = order
@@ -141,15 +140,7 @@ module SolidusNexi
       return false if operation.provider_payment_id.present?
 
       age_anchor = operation.dispatched_at || operation.updated_at || operation.created_at
-      if operation.status == "pending"
-        return age_anchor < 5.minutes.ago
-      end
-
-      if %w[dispatched unknown].include?(operation.status)
-        return age_anchor < UNKNOWN_CREATE_ABANDON_AFTER.ago
-      end
-
-      false
+      operation.status == "pending" && age_anchor < 5.minutes.ago
     end
 
     def mark_unknown!(operation, error)

@@ -116,7 +116,7 @@ module SolidusNexi
     def mark_abandoned!
       update!(
         status: "abandoned",
-        provider_code: "checkout_expired_without_provider_identity",
+        provider_code: "checkout_never_dispatched",
         reconciliation_required: false,
         completed_at: Time.current
       )
