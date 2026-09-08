@@ -17,6 +17,8 @@ Notable user-facing changes are recorded here. The current `solidus_nexi` rewrit
 
 ### Changed
 
+- Qualify PostgreSQL 18.6 with a source-built pg 1.6.3 client; consolidate automatic CI into one PR job and retain the broader profiles manually.
+
 - Replaced the historical `spree_dibs` extension with the `solidus_nexi` gem and `SolidusNexi` namespace.
 - Moved payment-detail collection entirely to Nexi's hosted checkout.
 - Limited financial mutations to full amounts until exact partial item allocation can be guaranteed.
@@ -56,6 +58,8 @@ Notable user-facing changes are recorded here. The current `solidus_nexi` rewrit
 Final historical `spree_dibs` source line. The archived tree is preserved by the `v2.1.0` tag and is unsupported.
 
 ### Changed
+
+- Qualify PostgreSQL 18.6 with a source-built pg 1.6.3 client; consolidate automatic CI into one PR job and retain the broader profiles manually.
 
 - Updated the legacy gateway for the Spree 2.2 development line.
 - Refreshed its version handling, dependencies, test app, and documentation.

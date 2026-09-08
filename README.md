@@ -17,7 +17,7 @@ This is an unreleased rewrite of `spree_dibs` under the `SolidusNexi` namespace.
 | Solidus | 4.7; 4.6 as a secondary target |
 | Rails | 7.2, 8.0, 8.1 |
 | Ruby | 3.2–4.0 |
-| Databases | SQLite, PostgreSQL, MySQL |
+| Databases | SQLite, PostgreSQL 18.6, MySQL |
 
 Development defaults to published Solidus 4.7 and Rails 8.1. Ruby 3.2 and Rails 7.2 remain compatibility targets. For a new store, use maintained releases; check the [Ruby branch status](https://www.ruby-lang.org/en/downloads/branches/) and [Rails maintenance policy](https://guides.rubyonrails.org/maintenance_policy.html).
 

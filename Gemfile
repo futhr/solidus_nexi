@@ -15,7 +15,7 @@ unless %w[7.2 8.0 8.1].include?(rails_series)
 end
 gem "rails", "~> #{rails_series}.0", ">= 7.2.3.2"
 case ENV.fetch("DB", "sqlite")
-when "postgresql" then gem "pg"
+when "postgresql" then gem "pg", "~> 1.6.3", force_ruby_platform: true
 when "mysql" then gem "mysql2"
 when "sqlite" then gem "sqlite3", "~> 2.0"
 else raise "Unsupported DB=#{ENV.fetch("DB").inspect}; choose sqlite, postgresql, or mysql"
