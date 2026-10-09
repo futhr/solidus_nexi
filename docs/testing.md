@@ -17,7 +17,7 @@ Normal specs block external HTTP. Provider responses under `spec/fixtures/nexi` 
 
 Set `SOLIDUS_VERSION=4.6` or `RAILS_VERSION=7.2` to test another supported series. Run `bundle update` and rebuild the dummy app after changing versions. `SOLIDUS_BRANCH` is an optional override for testing upstream changes; ordinary development and CI use published gems. The library leaves `Gemfile.lock` untracked so matrix jobs resolve their own compatible dependencies.
 
-CI runs the primary Solidus target against SQLite, PostgreSQL 16, and MySQL 8.4. The database jobs build a fresh host application and run every extension migration before executing the complete suite.
+The automatic CI workflow runs the primary Solidus target against PostgreSQL 18.6. The manual `full_matrix` workflow adds the declared Ruby/Rails profiles with SQLite and a MySQL 8.4 lane. The database jobs build a fresh host application and run every extension migration before executing the complete suite.
 
 ## Merchant API contract
 

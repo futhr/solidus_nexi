@@ -34,8 +34,8 @@ RSpec suite, eager-loading check, style, audit, and package checks locally.
 Use an isolated test database; the dummy generator creates and migrates it.
 Verify `PG.library_version` and the server's `server_version_num` are `180006`.
 
-The automatic PR workflow uses one PostgreSQL 18.6 lane and one coverage run.
-Additional Ruby/Rails and database profiles are explicit manual `full_matrix`
-checks. Run them locally for affected compatibility changes; do not dispatch
-Actions to iterate on failures. There are no duplicate push or scheduled test
-runs.
+The automatic workflow tests pull requests and pushes to `main` in one
+PostgreSQL 18.6 lane with one coverage run per event. Additional Ruby/Rails and
+database profiles are explicit manual `full_matrix` checks. Run them locally
+for affected compatibility changes; do not dispatch Actions to iterate on
+failures. There are no scheduled test runs.
