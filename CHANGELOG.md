@@ -17,14 +17,20 @@ Notable user-facing changes are recorded here. The current `solidus_nexi` rewrit
 
 ### Changed
 
-- Qualify PostgreSQL 18.6 with a source-built pg 1.6.3 client; consolidate automatic CI into one PR job and retain the broader profiles manually.
+- Use published Solidus 4.8, patched Rails series, Net::HTTP 0.10, source-built pg 1.7, and current lint/test dependencies; refresh CI action and PostgreSQL image pins.
+
+- Qualify PostgreSQL 18.6 with a source-built pg 1.7 client; consolidate automatic CI into one PR job and retain the broader profiles manually.
 
 - Replaced the historical `spree_dibs` extension with the `solidus_nexi` gem and `SolidusNexi` namespace.
 - Moved payment-detail collection entirely to Nexi's hosted checkout.
 - Limited financial mutations to full amounts until exact partial item allocation can be guaranteed.
-- Support Rails 7.2, 8.0, and 8.1; use published Solidus 4.7 and Rails 8.1 for development.
+- Support Rails 7.2, 8.0, and 8.1; use published Solidus 4.8 and Rails 8.1 for development.
 
 ### Fixed
+
+- Declare the pagination dependency still loaded by Solidus 4.8 core so the packaged engine boots without development gems.
+
+- Classify malformed HTTP responses as transport failures for retrievals and unknown outcomes for financial mutations.
 
 - Recover checkout creation when the provider accepted the request but the local response was lost.
 - Reconcile asynchronous refund completion and failure by exact provider refund ID.

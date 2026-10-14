@@ -22,7 +22,7 @@ Tags and RubyGems publication are maintainer release operations. Never create, m
 
 ## PostgreSQL 18.6 and local validation
 
-The PostgreSQL baseline is 18.6 with `pg` 1.6.3 or later in the 1.6 series.
+The PostgreSQL baseline is 18.6 with `pg` 1.7.0 or later in the 1.7 series.
 Build the source gem against PostgreSQL 18.6/libpq 18.6. On Debian 12 or Ubuntu
 24.04, `bin/setup-postgresql-client` installs the pinned PGDG client. On macOS,
 use `brew install postgresql@18` and set `BUNDLE_BUILD__PG` to

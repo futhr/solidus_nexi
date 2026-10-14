@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "stringio"
+
 RSpec.describe SolidusNexi::Nexi::Client do
   let(:transport) { instance_double(SolidusNexi::Nexi::NetHttpTransport) }
   let(:client) { described_class.new(api_key: "test-secret", transport:) }
@@ -206,6 +208,27 @@ RSpec.describe SolidusNexi::Nexi::Client do
       .to raise_error(SolidusNexi::Nexi::TransportError)
     expect { client.create_payment(payload: {order: {amount: 100}}) }
       .to raise_error(SolidusNexi::Nexi::TimeoutUnknownOutcome)
+  end
+
+  {
+    Net::HTTPBadResponse => "HTTP/1.1 invalid\r\n\r\n",
+    Net::HTTPHeaderSyntaxError => "HTTP/1.1 200 OK\r\nContent-Length: invalid\r\n\r\n"
+  }.each do |error_class, raw_response|
+    it "classifies #{error_class} from a malformed HTTP response" do
+      allow(transport).to receive(:call) do
+        socket = Net::BufferedIO.new(StringIO.new(raw_response))
+        Net::HTTPResponse.read_new(socket).content_length
+      end
+
+      expect { client.retrieve_payment(payment_id: "payment-1") }
+        .to raise_error(SolidusNexi::Nexi::TransportError) { |error|
+          expect(error.provider_code).to eq(error_class.name)
+        }
+      expect { client.create_payment(payload: {order: {amount: 100}}) }
+        .to raise_error(SolidusNexi::Nexi::TimeoutUnknownOutcome) { |error|
+          expect(error.provider_code).to eq(error_class.name)
+        }
+    end
   end
 
   it "logs bounded operational metadata without exposing the API key" do

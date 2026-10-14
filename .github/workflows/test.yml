@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       full_matrix:
-        description: Run the additional locally qualified compatibility profiles
+        description: Run the additional compatibility profiles
         type: boolean
         default: false
 
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:18.6-bookworm@sha256:1c59e2c3c818eaa0f0628f695b36e7c9e362d6b219b36a54a32df645cbd7e1af
+        image: postgres:18.6-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
         env:
           POSTGRES_PASSWORD: postgres
         ports:
@@ -42,7 +42,7 @@ jobs:
       DB_HOST: 127.0.0.1
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
-      SOLIDUS_VERSION: "4.7"
+      SOLIDUS_VERSION: "4.8"
       RAILS_VERSION: "8.1"
       SOLIDUS_PREFERENCES_MASTER_KEY: 0123456789abcdef0123456789abcdef
     steps:
@@ -51,7 +51,7 @@ jobs:
       - name: Install PostgreSQL 18.6 client
         run: bin/setup-postgresql-client
       - name: Set up Ruby
-        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
         with:
           ruby-version: "3.3"
           bundler-cache: true
@@ -82,6 +82,8 @@ jobs:
           - {solidus: "4.7", rails: "8.0", ruby: "3.3"}
           - {solidus: "4.7", rails: "8.1", ruby: "3.3"}
           - {solidus: "4.7", rails: "8.1", ruby: "4.0"}
+          - {solidus: "4.8", rails: "8.1", ruby: "3.3"}
+          - {solidus: "4.8", rails: "8.1", ruby: "4.0"}
           - {solidus: "4.6", rails: "7.2", ruby: "3.2"}
           - {solidus: "4.6", rails: "7.2", ruby: "3.3"}
     env:
@@ -92,7 +94,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Ruby
-        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
@@ -134,14 +136,14 @@ jobs:
       DB_HOST: 127.0.0.1
       DB_USERNAME: root
       DB_PASSWORD: mysql
-      SOLIDUS_VERSION: "4.7"
+      SOLIDUS_VERSION: "4.8"
       RAILS_VERSION: "8.1"
       SOLIDUS_PREFERENCES_MASTER_KEY: 0123456789abcdef0123456789abcdef
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Ruby
-        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
         with:
           ruby-version: "3.3"
           bundler-cache: true

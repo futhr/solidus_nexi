@@ -3,7 +3,7 @@
 [![Test](https://github.com/futhr/solidus_nexi/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/futhr/solidus_nexi/actions/workflows/test.yml)
 [![codecov](https://codecov.io/github/futhr/solidus_nexi/graph/badge.svg?token=6H54X0YWAG)](https://codecov.io/github/futhr/solidus_nexi)
 [![Ruby](https://img.shields.io/badge/Ruby-3.2%2B-CC342D?logo=ruby&logoColor=white)](https://www.ruby-lang.org/)
-[![Solidus](https://img.shields.io/badge/Solidus-4.6%E2%80%934.7-2B59C3)](https://solidus.io/)
+[![Solidus](https://img.shields.io/badge/Solidus-4.6%E2%80%934.8-2B59C3)](https://solidus.io/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE.md)
 
 `solidus_nexi` adds Nexi Checkout to Solidus. Card and wallet details stay on Nexi's hosted checkout; the store keeps only the provider identifiers and financial state needed to operate the payment.
@@ -14,12 +14,12 @@ This is an unreleased rewrite of `spree_dibs` under the `SolidusNexi` namespace.
 
 | Component | Supported |
 | --- | --- |
-| Solidus | 4.7; 4.6 as a secondary target |
+| Solidus | 4.8; 4.6 and 4.7 as secondary targets |
 | Rails | 7.2, 8.0, 8.1 |
 | Ruby | 3.2–4.0 |
 | Databases | SQLite, PostgreSQL 18.6, MySQL |
 
-Development defaults to published Solidus 4.7 and Rails 8.1. Ruby 3.2 and Rails 7.2 remain compatibility targets. For a new store, use maintained releases; check the [Ruby branch status](https://www.ruby-lang.org/en/downloads/branches/) and [Rails maintenance policy](https://guides.rubyonrails.org/maintenance_policy.html).
+Development defaults to published Solidus 4.8 and Rails 8.1. Ruby 3.2 and Rails 7.2 remain compatibility targets. For a new store, use maintained releases; check the [Ruby branch status](https://www.ruby-lang.org/en/downloads/branches/) and [Rails maintenance policy](https://guides.rubyonrails.org/maintenance_policy.html).
 
 The gem supports hosted one-time payments, authorization, optional auto-capture, full capture, full cancellation, full refund, authenticated webhooks, and reconciliation. It supports CHF, CZK, DKK, EUR, GBP, NOK, PLN, SEK, and USD.
 
